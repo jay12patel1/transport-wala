@@ -1,0 +1,74 @@
+<resources>
+    <string name="app_name">Transport Wala</string>
+    <string name="tagline">Reliable Transport. Easy Booking.</string>
+    <string name="developer_credit">Developed by Jayesh Patel</string>
+    <string name="contact_phone">Contact: 9725506630</string>
+
+    <!-- Authentication & Landing -->
+    <string name="login">Login</string>
+    <string name="signup">Sign Up</string>
+    <string name="logout">Logout</string>
+    <string name="forgot_password">Forgot Password?</string>
+    <string name="find_vehicle">Find Vehicle</string>
+    <string name="book_transport">Book Transport</string>
+    <string name="become_transporter">Become a Transporter</string>
+    <string name="become_driver">Become a Driver</string>
+    <string name="email_or_mobile">Email / Mobile Number</string>
+    <string name="password">Password</string>
+    <string name="confirm_password">Confirm Password</string>
+    <string name="full_name">Full Name</string>
+    <string name="mobile_number">Mobile Number</string>
+    <string name="email_address">Email Address</string>
+    <string name="select_role">Select Role</string>
+    <string name="role_customer">Customer / Trader</string>
+    <string name="role_transporter">Transporter / Fleet Owner</string>
+    <string name="role_driver">Commercial Driver</string>
+    <string name="role_admin">Super Admin</string>
+
+    <!-- Navigation -->
+    <string name="nav_home">Home</string>
+    <string name="nav_bookings">Bookings</string>
+    <string name="nav_vehicles">Vehicles</string>
+    <string name="nav_trips">Trips</string>
+    <string name="nav_active_trip">Active Trip</string>
+    <string name="nav_earnings">Earnings</string>
+    <string name="nav_chat">Chat</string>
+    <string name="nav_profile">Profile</string>
+    <string name="nav_track">Track</string>
+    <string name="nav_admin_dashboard">Admin Console</string>
+
+    <!-- Customer Actions & Search -->
+    <string name="pickup_location">Pickup Location</string>
+    <string name="destination_location">Destination</string>
+    <string name="pickup_date">Pickup Date</string>
+    <string name="vehicle_type">Vehicle Type</string>
+    <string name="vehicle_size">Vehicle Size</string>
+    <string name="capacity">Capacity (Tons)</string>
+    <string name="refrigerated">Refrigerated Vehicle</string>
+    <string name="search_vehicles">Search Vehicles</string>
+    <string name="book_now">Book Now</string>
+    <string name="confirm_booking">Confirm &amp; Book</string>
+    <string name="track_vehicle">Track Vehicle</string>
+    <string name="call_driver">Call Driver</string>
+    <string name="call_transporter">Call Transporter</string>
+    <string name="invoice">Invoice</string>
+    <string name="complaint">Raise Complaint</string>
+
+    <!-- Transporter & Driver -->
+    <string name="add_vehicle">Add Vehicle</string>
+    <string name="vehicle_number">Vehicle Number</string>
+    <string name="expected_fare">Expected Fare (₹)</string>
+    <string name="upload_documents">Upload Documents</string>
+    <string name="assign_driver">Assign Driver</string>
+    <string name="accept_booking">Accept</string>
+    <string name="reject_booking">Reject</string>
+    <string name="start_trip">Start Trip</string>
+    <string name="complete_trip">Complete Trip</string>
+    <string name="navigation">Google Navigation</string>
+
+    <!-- Languages -->
+    <string name="language">Language / ભાષા / भाषा</string>
+    <string name="lang_english">English</string>
+    <string name="lang_gujarati">ગુજરાતી</string>
+    <string name="lang_hindi">हिन्दी</string>
+</resources>

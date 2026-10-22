@@ -1,0 +1,7 @@
+{
+  "name": "Transport Wala",
+  "description": "Commercial Vehicle Booking & Transport Management Marketplace connecting Customers, Transporters, Drivers and Admins.",
+  "requestFramePermissions": ["geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+

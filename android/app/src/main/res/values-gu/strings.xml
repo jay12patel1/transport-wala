@@ -1,0 +1,74 @@
+<resources>
+    <string name="app_name">ટ્રાન્સપોર્ટ વાલા</string>
+    <string name="tagline">વિશ્વસનીય પરિવહન. સરળ બુકિંગ.</string>
+    <string name="developer_credit">ડેવલપર: જયેશ પટેલ</string>
+    <string name="contact_phone">સંપર્ક: 9725506630</string>
+
+    <!-- Authentication & Landing -->
+    <string name="login">લોગિન</string>
+    <string name="signup">સાઇન અપ</string>
+    <string name="logout">લોગઆઉટ</string>
+    <string name="forgot_password">પાસવર્ડ ભૂલી ગયા છો?</string>
+    <string name="find_vehicle">ગાડી શોધો</string>
+    <string name="book_transport">ટ્રાન્સપોર્ટ બુક કરો</string>
+    <string name="become_transporter">ટ્રાન્સપોર્ટર બનો</string>
+    <string name="become_driver">ડ્રાઇવર બનો</string>
+    <string name="email_or_mobile">ઈમેલ / મોબાઈલ નંબર</string>
+    <string name="password">પાસવર્ડ</string>
+    <string name="confirm_password">પાસવર્ડ કન્ફર્મ કરો</string>
+    <string name="full_name">પૂરું નામ</string>
+    <string name="mobile_number">મોબાઈલ નંબર</string>
+    <string name="email_address">ઈમેલ એડ્રેસ</string>
+    <string name="select_role">રોલ પસંદ કરો</string>
+    <string name="role_customer">ગ્રાહક / વેપારી</string>
+    <string name="role_transporter">ટ્રાન્સપોર્ટર / ફ્લીટ માલિક</string>
+    <string name="role_driver">કોમર્શિયલ ડ્રાઈવર</string>
+    <string name="role_admin">સુપર એડમિન</string>
+
+    <!-- Navigation -->
+    <string name="nav_home">હોમ</string>
+    <string name="nav_bookings">બુકિંગ્સ</string>
+    <string name="nav_vehicles">ગાડીઓ</string>
+    <string name="nav_trips">ટ્રિપ્સ</string>
+    <string name="nav_active_trip">ચાલુ ટ્રિપ</string>
+    <string name="nav_earnings">કમાણી</string>
+    <string name="nav_chat">ચેટ</string>
+    <string name="nav_profile">પ્રોફાઇલ</string>
+    <string name="nav_track">લાઈવ ટ્રેક</string>
+    <string name="nav_admin_dashboard">એડમિન કન્સોલ</string>
+
+    <!-- Customer Actions & Search -->
+    <string name="pickup_location">પિકઅપ સ્થળ</string>
+    <string name="destination_location">ડિલિવરી સ્થળ</string>
+    <string name="pickup_date">પિકઅપ તારીખ</string>
+    <string name="vehicle_type">વાહનનો પ્રકાર</string>
+    <string name="vehicle_size">વાહનનું કદ</string>
+    <string name="capacity">ક્ષમતા (ટન)</string>
+    <string name="refrigerated">રેફ્રિજરેટેડ વાહન</string>
+    <string name="search_vehicles">વાહનો શોધો</string>
+    <string name="book_now">હમણાં બુક કરો</string>
+    <string name="confirm_booking">બુકિંગ કન્ફર્મ કરો</string>
+    <string name="track_vehicle">વાહન ટ્રેક કરો</string>
+    <string name="call_driver">ડ્રાઇવરને કૉલ કરો</string>
+    <string name="call_transporter">ટ્રાન્સપોર્ટરને કૉલ કરો</string>
+    <string name="invoice">ઇન્વોઇસ</string>
+    <string name="complaint">ફરિયાદ નોંધાવો</string>
+
+    <!-- Transporter & Driver -->
+    <string name="add_vehicle">નવું વાહન ઉમેરો</string>
+    <string name="vehicle_number">વાહન નંબર</string>
+    <string name="expected_fare">અંદાજિત ભાડું (₹)</string>
+    <string name="upload_documents">દસ્તાવેજો અપલોડ કરો</string>
+    <string name="assign_driver">ડ્રાઇવર સોંપો</string>
+    <string name="accept_booking">સ્વીકારો</string>
+    <string name="reject_booking">નકારો</string>
+    <string name="start_trip">ટ્રિપ શરૂ કરો</string>
+    <string name="complete_trip">ટ્રિપ પૂર્ણ કરો</string>
+    <string name="navigation">ગૂગલ નેવિગેશન</string>
+
+    <!-- Languages -->
+    <string name="language">ભાષા</string>
+    <string name="lang_english">English</string>
+    <string name="lang_gujarati">ગુજરાતી</string>
+    <string name="lang_hindi">हिन्दी</string>
+</resources>

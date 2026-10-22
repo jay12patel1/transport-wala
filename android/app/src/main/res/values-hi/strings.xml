@@ -1,0 +1,74 @@
+<resources>
+    <string name="app_name">ट्रांसपोर्ट वाला</string>
+    <string name="tagline">विश्वसनीय परिवहन. आसान बुकिंग.</string>
+    <string name="developer_credit">डेवलपर: जयेश पटेल</string>
+    <string name="contact_phone">संपर्क: 9725506630</string>
+
+    <!-- Authentication & Landing -->
+    <string name="login">लॉगिन</string>
+    <string name="signup">साइन अप</string>
+    <string name="logout">लॉगआउट</string>
+    <string name="forgot_password">पासवर्ड भूल गए?</string>
+    <string name="find_vehicle">गाड़ी खोजें</string>
+    <string name="book_transport">ट्रांसपोर्ट बुक करें</string>
+    <string name="become_transporter">ट्रांसपोर्टर बनें</string>
+    <string name="become_driver">ड्राइवर बनें</string>
+    <string name="email_or_mobile">ईमेल / मोबाइल नंबर</string>
+    <string name="password">पासवर्ड</string>
+    <string name="confirm_password">पासवर्ड पुष्टि करें</string>
+    <string name="full_name">पूरा नाम</string>
+    <string name="mobile_number">मोबाइल नंबर</string>
+    <string name="email_address">ईमेल पता</string>
+    <string name="select_role">रोल चुनें</string>
+    <string name="role_customer">ग्राहक / व्यापारी</string>
+    <string name="role_transporter">ट्रांसपोर्टर / फ्लीट मालिक</string>
+    <string name="role_driver">कमर्शियल ड्राइवर</string>
+    <string name="role_admin">सुपर एडमिन</string>
+
+    <!-- Navigation -->
+    <string name="nav_home">होम</string>
+    <string name="nav_bookings">बुकिंग्स</string>
+    <string name="nav_vehicles">गाड़ियां</string>
+    <string name="nav_trips">ट्रिप्स</string>
+    <string name="nav_active_trip">सक्रिय ट्रिप</string>
+    <string name="nav_earnings">कमाई</string>
+    <string name="nav_chat">चैट</string>
+    <string name="nav_profile">प्रोफाइल</string>
+    <string name="nav_track">लाइव ट्रैक</string>
+    <string name="nav_admin_dashboard">एडमिन कंसोल</string>
+
+    <!-- Customer Actions & Search -->
+    <string name="pickup_location">पिकअप स्थान</string>
+    <string name="destination_location">डिलीवरी स्थान</string>
+    <string name="pickup_date">पिकअप तिथि</string>
+    <string name="vehicle_type">गाड़ी का प्रकार</string>
+    <string name="vehicle_size">गाड़ी का आकार</string>
+    <string name="capacity">क्षमता (टन)</string>
+    <string name="refrigerated">रेफ्रिजरेटेड गाड़ी</string>
+    <string name="search_vehicles">गाड़ियां खोजें</string>
+    <string name="book_now">अभी बुक करें</string>
+    <string name="confirm_booking">बुकिंग कन्फर्म करें</string>
+    <string name="track_vehicle">गाड़ी ट्रैक करें</string>
+    <string name="call_driver">ड्राइवर को कॉल करें</string>
+    <string name="call_transporter">ट्रांसपोर्टर को कॉल करें</string>
+    <string name="invoice">इनवॉइस</string>
+    <string name="complaint">शिकायत दर्ज करें</string>
+
+    <!-- Transporter & Driver -->
+    <string name="add_vehicle">नई गाड़ी जोड़ें</string>
+    <string name="vehicle_number">गाड़ी नंबर</string>
+    <string name="expected_fare">अपेक्षित किराया (₹)</string>
+    <string name="upload_documents">दस्तावेज़ अपलोड करें</string>
+    <string name="assign_driver">ड्राइवर असाइन करें</string>
+    <string name="accept_booking">स्वीकार करें</string>
+    <string name="reject_booking">अस्वीकार करें</string>
+    <string name="start_trip">ट्रिप शुरू करें</string>
+    <string name="complete_trip">ट्रिप पूरी करें</string>
+    <string name="navigation">गूगल नेविगेशन</string>
+
+    <!-- Languages -->
+    <string name="language">भाषा</string>
+    <string name="lang_english">English</string>
+    <string name="lang_gujarati">ગુજરાતી</string>
+    <string name="lang_hindi">हिन्दी</string>
+</resources>
