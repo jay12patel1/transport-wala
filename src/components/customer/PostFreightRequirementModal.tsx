@@ -43,7 +43,7 @@ export const PostFreightRequirementModal: React.FC<PostFreightRequirementModalPr
     'Open Flatbed Truck'
   ];
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
@@ -70,7 +70,7 @@ export const PostFreightRequirementModal: React.FC<PostFreightRequirementModalPr
 
     setSubmitting(true);
     try {
-      addFreightRequirement({
+      await addFreightRequirement({
         customerId: user.id,
         customerName: user.fullName || 'Shipper Cargo Owner',
         customerPhone: user.phone || '+91 97255 06630',
@@ -83,7 +83,6 @@ export const PostFreightRequirementModal: React.FC<PostFreightRequirementModalPr
         targetBudgetPerVehicle: targetBudgetPerVehicle ? Number(targetBudgetPerVehicle) : undefined
       });
 
-      showToast(`Bulk requirement for ${quantityRequired} ${vehicleType} broadcasted to all registered transporters!`);
       if (onSuccess) onSuccess();
       onClose();
     } catch (err: any) {

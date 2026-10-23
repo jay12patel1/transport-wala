@@ -297,5 +297,5 @@ export interface CustomerFreightRequirement {
   goodsDescription: string;
   targetBudgetPerVehicle?: number;
   status: 'open' | 'fulfilled' | 'closed';
-  createdAt: string;
+  createdAt?: string;
 }

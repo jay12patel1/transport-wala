@@ -36,13 +36,13 @@ export const BookingCheckoutModal: React.FC<BookingCheckoutModalProps> = ({
   const gst = Math.round(subtotal * (adminSettings.gstPercentage / 100));
   const total = subtotal + gst;
 
-  const handleConfirmBooking = (e: React.FormEvent) => {
+  const handleConfirmBooking = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!pickup.trim() || !destination.trim() || !date) return;
 
     setIsSubmitting(true);
-    setTimeout(() => {
-      const order = createBooking(
+    try {
+      const order = await createBooking(
         vehicle, 
         pickup.trim(), 
         destination.trim(), 
@@ -51,7 +51,9 @@ export const BookingCheckoutModal: React.FC<BookingCheckoutModalProps> = ({
       );
       setIsSubmitting(false);
       onBookingSuccess(order);
-    }, 600);
+    } catch (err) {
+      setIsSubmitting(false);
+    }
   };
 
   return (

@@ -64,7 +64,7 @@ export const DriverMode: React.FC = () => {
     }
   };
 
-  const handleApplySubmit = (e: React.FormEvent) => {
+  const handleApplySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedJobForApply) return;
     setApplyError(null);
@@ -74,7 +74,7 @@ export const DriverMode: React.FC = () => {
       return;
     }
 
-    const res = applyForJob(selectedJobForApply.id, {
+    const res = await applyForJob(selectedJobForApply.id, {
       driverName: applicantName.trim(),
       driverPhone: applicantPhone.trim(),
       experienceYears: Number(experienceYears) || 3,

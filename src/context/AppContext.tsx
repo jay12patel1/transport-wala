@@ -2023,25 +2023,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           created_at: newOrder.createdAt
         };
 
-        const { error } = await supabase.from('bookings').insert([bookingDbRow]);
-        if (!error) {
+        const { data, error } = await supabase.from('bookings').insert([bookingDbRow]).select();
+        if (error) {
+          console.error("Supabase booking insert error:", error);
+          showToast(`Error creating booking: ${error.message}`);
+        } else {
           setRawBookings(prev => [newOrder, ...prev]);
           showToast("Booking created successfully!");
-        } else {
-          console.error("Supabase booking insert error:", error);
-          const direct = await supabase.from('bookings').insert([newOrder]);
-          if (!direct.error) {
-            setRawBookings(prev => [newOrder, ...prev]);
-            showToast("Booking created successfully!");
-          } else {
-            setRawBookings(prev => [newOrder, ...prev]);
-            showToast(`Booking created: ${error.message}`);
-          }
         }
       } catch (err: any) {
         console.error("Insert booking failed:", err);
-        setRawBookings(prev => [newOrder, ...prev]);
-        showToast("Booking created successfully!");
+        showToast(`Error creating booking: ${err.message || 'Failed to create booking'}`);
       }
     } else {
       setRawBookings(prev => [newOrder, ...prev]);
@@ -2198,53 +2190,65 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // Customer Freight Requirements (Bulk Load Enquiries)
+  // Customer Freight Requirements (Bulk Load Enquiries)
   const createFreightRequirement = async (
-    reqData: Omit<CustomerFreightRequirement, 'id' | 'createdAt' | 'status'> | CustomerFreightRequirement
+    reqData: Omit<CustomerFreightRequirement, 'id' | 'createdAt' | 'status'> | CustomerFreightRequirement | any
   ): Promise<CustomerFreightRequirement> => {
-    const newRequirement: CustomerFreightRequirement = {
-      ...reqData,
-      id: ('id' in reqData && reqData.id) ? reqData.id : `REQ-${Date.now().toString().slice(-6)}`,
-      status: ('status' in reqData && (reqData as any).status) ? (reqData as any).status : 'open',
-      createdAt: ('createdAt' in reqData && reqData.createdAt) ? reqData.createdAt : new Date().toISOString()
+    // Generate clean unique ID: req_${Date.now()}
+    const newId = ('id' in reqData && reqData.id) ? reqData.id : `req_${Date.now()}`;
+
+    // Prepare payload matching database column names exactly:
+    // id, customerId, customerName, customerPhone, pickupLocation, deliveryLocation, pickupDate, vehicleType, quantityRequired, goodsDescription, targetBudgetPerVehicle, status
+    const payload = {
+      id: newId,
+      customerId: reqData.customerId || user.id || 'usr_cust_001',
+      customerName: reqData.customerName || user.fullName || 'Commercial Shipper',
+      customerPhone: reqData.customerPhone || user.phone || '9876543210',
+      pickupLocation: reqData.pickupLocation || 'Ahmedabad',
+      deliveryLocation: reqData.deliveryLocation || 'Mumbai',
+      pickupDate: reqData.pickupDate || new Date().toISOString().split('T')[0],
+      vehicleType: reqData.vehicleType || 'Commercial Truck',
+      quantityRequired: Number(reqData.quantityRequired) || 1,
+      goodsDescription: reqData.goodsDescription || 'General Cargo',
+      targetBudgetPerVehicle: reqData.targetBudgetPerVehicle ? Number(reqData.targetBudgetPerVehicle) : undefined,
+      status: reqData.status || 'open'
     };
 
     if (supabase) {
       try {
         // Ensure customer user exists in users table for foreign key constraint
         await supabase.from('users').upsert([{
-          id: newRequirement.customerId || user.id || 'usr_cust_001',
-          fullName: newRequirement.customerName || user.fullName || 'Shipper',
-          phone: newRequirement.customerPhone || user.phone || '9876543210',
+          id: payload.customerId,
+          fullName: payload.customerName,
+          phone: payload.customerPhone,
           role: 'customer'
         }], { onConflict: 'id' });
 
-        const { error } = await supabase.from('customer_requirements').insert([newRequirement]);
-        if (!error) {
-          setRawFreightRequirements(prev => [newRequirement, ...prev]);
-          showToast("Requirement posted successfully!");
+        const { data, error } = await supabase.from('customer_requirements').insert([payload]).select();
+        if (error) {
+          console.error("Supabase requirement error:", error);
+          showToast(`Error saving requirement: ${error.message}`);
         } else {
-          console.error("Supabase requirement insert error:", error);
-          showToast(`Error: ${error.message}`);
-          setRawFreightRequirements(prev => [newRequirement, ...prev]);
+          setRawFreightRequirements(prev => [payload, ...prev]);
+          showToast("Freight requirement saved to database!");
         }
       } catch (err: any) {
-        console.error("Supabase requirement insert error:", err);
-        showToast(`Error: ${err.message || 'Failed to post requirement'}`);
-        setRawFreightRequirements(prev => [newRequirement, ...prev]);
+        console.error("Supabase requirement error:", err);
+        showToast(`Error saving requirement: ${err.message || 'Failed to save requirement'}`);
       }
     } else {
-      setRawFreightRequirements(prev => [newRequirement, ...prev]);
-      showToast("Requirement posted successfully!");
+      setRawFreightRequirements(prev => [payload, ...prev]);
+      showToast("Freight requirement saved to database!");
     }
 
     addNotification({
       userId: 'usr_adm_001',
-      title: `New Freight Inquiry: ${newRequirement.id}`,
-      body: `${newRequirement.customerName} needs ${newRequirement.quantityRequired}x ${newRequirement.vehicleType} for ${newRequirement.pickupLocation} → ${newRequirement.deliveryLocation}`,
+      title: `New Freight Inquiry: ${payload.id}`,
+      body: `${payload.customerName} needs ${payload.quantityRequired}x ${payload.vehicleType} for ${payload.pickupLocation} → ${payload.deliveryLocation}`,
       type: 'trip'
     });
 
-    return newRequirement;
+    return payload;
   };
 
   const addCustomerRequirement = createFreightRequirement;
@@ -2500,45 +2504,74 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     const driverUserId = user.id && user.id !== 'usr_unauth' ? user.id : `usr_drv_${Date.now()}`;
-    const newApp: JobApplication = {
+    
+    // Ensure payload matches driver_applications schema:
+    // (id, jobId, driverId, driverName, driverPhone, licenseNumber, experienceYears, resumeFileName, resumeUrl, status)
+    const appData = {
       id: `app_${Date.now()}`,
       jobId,
       driverId: driverUserId,
       driverName: applicationData.driverName.trim(),
       driverPhone: applicationData.driverPhone.trim(),
-      experienceYears: Number(applicationData.experienceYears) || 3,
       licenseNumber: applicationData.licenseNumber.trim().toUpperCase(),
+      experienceYears: Number(applicationData.experienceYears) || 3,
       resumeFileName: applicationData.resumeFileName || 'Commercial_Driver_Resume.pdf',
       resumeUrl: applicationData.resumeUrl || 'https://images.unsplash.com/photo-1586281380349-632531db7ed4?w=800&auto=format&fit=crop&q=80',
-      status: 'applied',
-      appliedAt: new Date().toISOString().split('T')[0]
+      status: 'applied' as const
     };
 
-    setRawJobApplications(prev => [newApp, ...prev]);
-
-    // Save the driver's application and resume metadata into supabase.from('driver_applications').insert([application])
+    // Save driver application to Supabase driver_applications table
     if (supabase) {
       try {
+        // Ensure driver user exists in users table for foreign key constraint
         await supabase.from('users').upsert([{
-          id: newApp.driverId,
-          fullName: newApp.driverName,
-          phone: newApp.driverPhone,
+          id: appData.driverId,
+          fullName: appData.driverName,
+          phone: appData.driverPhone,
           role: 'driver'
         }], { onConflict: 'id' });
 
-        const { error } = await supabase.from('driver_applications').insert([newApp]);
-        if (!error) {
-          showToast("Application submitted successfully!");
+        // Ensure parent job vacancy exists in driver_vacancies table
+        const targetJob = rawJobVacancies.find(j => j.id === jobId);
+        if (targetJob) {
+          await supabase.from('users').upsert([{
+            id: targetJob.transporterId || 'usr_trans_001',
+            fullName: targetJob.transporterName || 'Fleet Transporter',
+            phone: targetJob.transporterPhone || '9825012345',
+            role: 'transporter'
+          }], { onConflict: 'id' });
+
+          await supabase.from('driver_vacancies').upsert([{
+            id: targetJob.id,
+            transporterId: targetJob.transporterId || 'usr_trans_001',
+            transporterName: targetJob.transporterName || 'Fleet Transporter',
+            transporterPhone: targetJob.transporterPhone || '9825012345',
+            vehicleType: targetJob.vehicleType || 'Commercial Truck',
+            route: targetJob.route || 'Gujarat',
+            salaryOffer: targetJob.salaryOffer || '₹25,000 - ₹35,000 / month',
+            experienceRequired: Number(targetJob.experienceRequired) || 1,
+            requirements: targetJob.requirements || 'Commercial driving license required.',
+            status: targetJob.status || 'open'
+          }], { onConflict: 'id' });
+        }
+
+        const { data, error } = await supabase.from('driver_applications').insert([appData]).select();
+        if (error) {
+          console.error("Supabase driver application error:", error);
+          showToast(`Error submitting application: ${error.message}`);
+          return { success: false, message: error.message };
         } else {
-          console.error("Supabase driver application insert error:", error);
-          showToast(`Application saved: ${error.message}`);
+          setRawJobApplications(prev => [{ ...appData, appliedAt: new Date().toISOString().split('T')[0] }, ...prev]);
+          showToast("Application submitted successfully!");
         }
       } catch (err: any) {
         console.error("Supabase driver_applications insert exception:", err);
-        showToast('Application submitted successfully!');
+        showToast(`Error submitting application: ${err.message || 'Failed to submit application'}`);
+        return { success: false, message: err.message };
       }
     } else {
-      showToast('Application submitted successfully!');
+      setRawJobApplications(prev => [{ ...appData, appliedAt: new Date().toISOString().split('T')[0] }, ...prev]);
+      showToast("Application submitted successfully!");
     }
 
     // Send notification to Transporter
@@ -2547,7 +2580,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       addNotification({
         userId: targetJob.transporterId,
         title: 'New Driver Resume Received! / નવો રેઝ્યૂમે મળ્યો',
-        body: `${newApp.driverName} (${newApp.experienceYears} yrs exp) applied for ${targetJob.vehicleType} on ${targetJob.route}.`,
+        body: `${appData.driverName} (${appData.experienceYears} yrs exp) applied for ${targetJob.vehicleType} on ${targetJob.route}.`,
         type: 'system'
       });
     }
