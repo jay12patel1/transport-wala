@@ -1,10 +1,9 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { UserRole } from '../../types';
-import { DEMO_CREDENTIALS } from '../../data/demoData';
 import { 
   Truck, ShieldCheck, User, Building2, 
-  Lock, ArrowRight, ShieldAlert, Sparkles, 
+  Lock, ArrowRight, ShieldAlert, 
   Navigation, ArrowLeft, Eye, EyeOff, CheckCircle2, 
   KeyRound, X
 } from 'lucide-react';
@@ -98,8 +97,8 @@ const ROLE_CONFIGS: Record<UserRole, RoleConfig> = {
     badgeClass: 'bg-purple-950/80 text-purple-300 border-purple-800',
     buttonClass: 'bg-purple-600 hover:bg-purple-500 shadow-purple-600/30',
     bannerClass: 'bg-purple-950/40 border-purple-800/60 text-purple-200',
-    defaultMobile: '9725506630',
-    defaultPass: 'password123',
+    defaultMobile: '',
+    defaultPass: '',
     demoAccountName: 'Jayesh Patel (Headquarters Admin)'
   }
 };
@@ -118,10 +117,10 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
   const [activeTab, setActiveTab] = useState<UserRole>(initialRole);
   
-  // Mobile & Password Authentication Fields (Strictly 2 inputs, completely direct)
+  // Mobile & Password Authentication Fields - Start completely blank
   const currentConfig = ROLE_CONFIGS[activeTab];
-  const [mobileNumber, setMobileNumber] = useState<string>(currentConfig.defaultMobile);
-  const [password, setPassword] = useState<string>(currentConfig.defaultPass);
+  const [mobileNumber, setMobileNumber] = useState<string>('');
+  const [password, setPassword] = useState<string>('');
   const [showPassword, setShowPassword] = useState<boolean>(false);
 
   // Status & Error
@@ -142,17 +141,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   const handleTabChange = (role: UserRole) => {
     setActiveTab(role);
     setErrorMessage(null);
-    const config = ROLE_CONFIGS[role];
-    setMobileNumber(config.defaultMobile);
-    setPassword(config.defaultPass);
-  };
-
-  const handleApplySuperAdminAccount = () => {
-    setActiveTab('admin');
-    setErrorMessage(null);
-    setMobileNumber('9725506630');
-    setPassword('password123');
-    showToast('Loaded Super Admin master credentials');
+    setMobileNumber('');
+    setPassword('');
   };
 
   const handleLoginSubmit = async (e: React.FormEvent) => {
@@ -364,7 +354,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
               </div>
             )}
 
-            <form onSubmit={handleLoginSubmit} className="space-y-4 text-xs">
+            <form onSubmit={handleLoginSubmit} autoComplete="off" className="space-y-4 text-xs">
               
               {/* Input 1: Registered Mobile Number (Accepts 10-digit mobile number) */}
               <div>
@@ -379,6 +369,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                   <input
                     type="tel"
                     required
+                    autoComplete="off"
                     value={mobileNumber}
                     onChange={(e) => setMobileNumber(e.target.value)}
                     placeholder="Enter 10-digit mobile number"
@@ -414,6 +405,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                   <input
                     type={showPassword ? 'text' : 'password'}
                     required
+                    autoComplete="off"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="Enter your account password"
@@ -451,32 +443,9 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
               </button>
             </form>
 
-            {/* Default Super Admin Account Card for Administrator Access */}
-            <div className="pt-3 border-t border-slate-800/80">
-              <div className="bg-slate-900/60 border border-slate-800/90 rounded-2xl p-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 text-xs">
-                <div className="space-y-0.5">
-                  <span className="flex items-center gap-1.5 font-bold text-slate-300 text-[11px]">
-                    <Sparkles className="w-3.5 h-3.5 text-purple-400" />
-                    Default Super Admin Account:
-                  </span>
-                  <p className="text-[11px] text-slate-400 font-mono">
-                    Mobile: <strong className="text-white">9725506630</strong> • Pass: <strong className="text-white">password123</strong>
-                  </p>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={handleApplySuperAdminAccount}
-                  className="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-[11px] font-bold shadow-md shadow-purple-600/20 transition whitespace-nowrap"
-                >
-                  Fill Super Admin
-                </button>
-              </div>
-            </div>
-
             {/* Don't have an account link */}
             {activeTab !== 'admin' && (
-              <div className="text-center pt-1 text-xs text-slate-400">
+              <div className="text-center pt-2 text-xs text-slate-400">
                 Don&apos;t have a {currentConfig.tabTitle} account yet?{' '}
                 <button
                   type="button"

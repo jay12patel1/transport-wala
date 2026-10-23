@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { Vehicle, BookingOrder, DriverRecord, CustomerFreightRequirement } from '../types';
 
 const supabaseUrl = (import.meta as any).env?.VITE_SUPABASE_URL || '';
 const supabaseAnonKey = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || '';
@@ -439,5 +440,314 @@ export async function signOutSupabase(): Promise<void> {
     } catch (e) {
       console.warn('Supabase sign out error:', e);
     }
+  }
+}
+
+/**
+ * CLOUD DATABASE PERSISTENCE: VEHICLES
+ */
+export async function syncVehicleToSupabase(vehicle: Vehicle): Promise<{ success: boolean; error?: string }> {
+  if (!isSupabaseConfigured || !supabase) return { success: true };
+  try {
+    const row = {
+      id: vehicle.id,
+      owner_id: vehicle.ownerId,
+      transporter_name: vehicle.transporterName,
+      transporter_phone: vehicle.transporterPhone,
+      transporter_rating: vehicle.transporterRating || 5.0,
+      vehicle_number: vehicle.vehicleNumber,
+      vehicle_type: vehicle.vehicleType,
+      vehicle_category: vehicle.vehicleCategory || '',
+      vehicle_size: vehicle.vehicleSize || '',
+      capacity_kg: vehicle.capacityKg,
+      capacity_ton: vehicle.capacityTon,
+      current_location: vehicle.currentLocation,
+      preferred_route: vehicle.preferredRoute || '',
+      available_from_date: vehicle.availableFromDate || new Date().toISOString().split('T')[0],
+      is_refrigerated: !!vehicle.isRefrigerated,
+      status: vehicle.status,
+      base_fare: vehicle.baseFare,
+      per_km_rate: vehicle.perKmRate,
+      driver_name: vehicle.driverName || '',
+      driver_phone: vehicle.driverPhone || '',
+      image_url: vehicle.imageUrl || '',
+      description: vehicle.description || '',
+      is_verified: vehicle.isVerified ?? true,
+      documents: vehicle.documents || []
+    };
+    const { error } = await supabase.from('vehicles').upsert(row, { onConflict: 'id' });
+    if (error) {
+      console.warn('Supabase vehicle sync warning:', error.message);
+      return { success: false, error: error.message };
+    }
+    return { success: true };
+  } catch (err: any) {
+    console.warn('Supabase vehicle sync exception:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+export async function fetchVehiclesFromSupabase(): Promise<Vehicle[] | null> {
+  if (!isSupabaseConfigured || !supabase) return null;
+  try {
+    const { data, error } = await supabase.from('vehicles').select('*');
+    if (error) {
+      console.warn('Supabase fetch vehicles warning:', error.message);
+      return null;
+    }
+    if (!data) return [];
+    return data.map((row: any): Vehicle => ({
+      id: row.id,
+      ownerId: row.owner_id || row.ownerId || '',
+      transporterName: row.transporter_name || row.transporterName || 'Fleet Operator',
+      transporterPhone: row.transporter_phone || row.transporterPhone || '+91 97255 06630',
+      transporterRating: row.transporter_rating ?? row.transporterRating ?? 5.0,
+      vehicleNumber: row.vehicle_number || row.vehicleNumber || 'GJ-01-TW-0000',
+      vehicleType: row.vehicle_type || row.vehicleType || 'Commercial Truck',
+      vehicleCategory: row.vehicle_category || row.vehicleCategory || 'Truck',
+      vehicleSize: row.vehicle_size || row.vehicleSize || '',
+      capacityKg: Number(row.capacity_kg ?? row.capacityKg ?? 10000),
+      capacityTon: Number(row.capacity_ton ?? row.capacityTon ?? 10),
+      currentLocation: row.current_location || row.currentLocation || 'Gujarat',
+      preferredRoute: row.preferred_route || row.preferredRoute || 'All Gujarat & Western Freight',
+      availableFromDate: row.available_from_date || row.availableFromDate || new Date().toISOString().split('T')[0],
+      isRefrigerated: !!(row.is_refrigerated ?? row.isRefrigerated),
+      status: row.status || 'available',
+      baseFare: Number(row.base_fare ?? row.baseFare ?? 20000),
+      perKmRate: Number(row.per_km_rate ?? row.perKmRate ?? 45),
+      driverName: row.driver_name || row.driverName || '',
+      driverPhone: row.driver_phone || row.driverPhone || '',
+      imageUrl: row.image_url || row.imageUrl || '',
+      description: row.description || '',
+      isVerified: row.is_verified ?? row.isVerified ?? true,
+      documents: row.documents || []
+    }));
+  } catch (err) {
+    console.warn('Supabase fetch vehicles exception:', err);
+    return null;
+  }
+}
+
+/**
+ * CLOUD DATABASE PERSISTENCE: BOOKINGS
+ */
+export async function syncBookingToSupabase(booking: BookingOrder): Promise<{ success: boolean; error?: string }> {
+  if (!isSupabaseConfigured || !supabase) return { success: true };
+  try {
+    const row = {
+      id: booking.id,
+      customer_id: booking.customerId,
+      customer_name: booking.customerName,
+      customer_phone: booking.customerPhone,
+      customer_company: booking.customerCompany || '',
+      transporter_id: booking.transporterId,
+      transporter_name: booking.transporterName,
+      transporter_phone: booking.transporterPhone,
+      vehicle_id: booking.vehicleId,
+      vehicle_number: booking.vehicleNumber,
+      vehicle_type: booking.vehicleType,
+      driver_name: booking.driverName || '',
+      driver_phone: booking.driverPhone || '',
+      pickup_location: booking.pickupLocation,
+      delivery_location: booking.deliveryLocation,
+      pickup_date: booking.pickupDate,
+      base_amount: booking.baseFare,
+      loading_charge: booking.loadingCharges,
+      unloading_charge: booking.unloadingCharges,
+      toll_charge: booking.tollCharges,
+      gst_amount: booking.gstAmount,
+      commission_amount: booking.adminCommissionAmount,
+      total_amount: booking.totalAmount,
+      transporter_payable_amount: booking.transporterPayableAmount,
+      status: booking.status,
+      payment_status: booking.paymentStatus,
+      payment_mode: booking.paymentMethod,
+      created_at: booking.createdAt,
+      events: booking.events || []
+    };
+    const { error } = await supabase.from('bookings').upsert(row, { onConflict: 'id' });
+    if (error) {
+      console.warn('Supabase booking sync warning:', error.message);
+      return { success: false, error: error.message };
+    }
+    return { success: true };
+  } catch (err: any) {
+    console.warn('Supabase booking sync exception:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+export async function fetchBookingsFromSupabase(): Promise<BookingOrder[] | null> {
+  if (!isSupabaseConfigured || !supabase) return null;
+  try {
+    const { data, error } = await supabase.from('bookings').select('*');
+    if (error) {
+      console.warn('Supabase fetch bookings warning:', error.message);
+      return null;
+    }
+    if (!data) return [];
+    return data.map((row: any): BookingOrder => ({
+      id: row.id,
+      customerId: row.customer_id || row.customerId,
+      customerName: row.customer_name || row.customerName,
+      customerPhone: row.customer_phone || row.customerPhone,
+      customerCompany: row.customer_company || row.customerCompany || '',
+      transporterId: row.transporter_id || row.transporterId,
+      transporterName: row.transporter_name || row.transporterName,
+      transporterPhone: row.transporter_phone || row.transporterPhone,
+      vehicleId: row.vehicle_id || row.vehicleId,
+      vehicleNumber: row.vehicle_number || row.vehicleNumber,
+      vehicleType: row.vehicle_type || row.vehicleType,
+      driverName: row.driver_name || row.driverName,
+      driverPhone: row.driver_phone || row.driverPhone,
+      pickupLocation: row.pickup_location || row.pickupLocation,
+      deliveryLocation: row.delivery_location || row.deliveryLocation,
+      pickupDate: row.pickup_date || row.pickupDate,
+      baseFare: Number(row.base_amount ?? row.baseFare ?? 0),
+      loadingCharges: Number(row.loading_charge ?? row.loadingCharges ?? 0),
+      unloadingCharges: Number(row.unloading_charge ?? row.unloadingCharges ?? 0),
+      tollCharges: Number(row.toll_charge ?? row.tollCharges ?? 0),
+      otherCharges: 0,
+      gstAmount: Number(row.gst_amount ?? row.gstAmount ?? 0),
+      adminCommissionAmount: Number(row.commission_amount ?? row.adminCommissionAmount ?? 0),
+      totalAmount: Number(row.total_amount ?? row.totalAmount ?? 0),
+      transporterPayableAmount: Number(row.transporter_payable_amount ?? row.transporterPayableAmount ?? 0),
+      status: row.status,
+      paymentStatus: row.payment_status || row.paymentStatus || 'pending',
+      paymentMethod: row.payment_mode || row.paymentMethod || 'cash',
+      createdAt: row.created_at || row.createdAt,
+      events: row.events || []
+    }));
+  } catch (err) {
+    console.warn('Supabase fetch bookings exception:', err);
+    return null;
+  }
+}
+
+/**
+ * CLOUD DATABASE PERSISTENCE: DRIVER RECORDS
+ */
+export async function syncDriverToSupabase(driver: DriverRecord): Promise<{ success: boolean; error?: string }> {
+  if (!isSupabaseConfigured || !supabase) return { success: true };
+  try {
+    const row = {
+      id: driver.id,
+      transporter_id: driver.transporterId,
+      transporter_name: driver.transporterName,
+      full_name: driver.fullName,
+      phone: driver.phone,
+      email: driver.email || '',
+      license_number: driver.licenseNumber,
+      experience_years: driver.experienceYears,
+      assigned_vehicle_id: driver.assignedVehicleId || '',
+      assigned_vehicle_number: driver.assignedVehicleNumber || '',
+      passcode: driver.passcode || '1234',
+      status: driver.status || 'active',
+      rating: driver.rating || 5,
+      joined_at: driver.joinedAt || new Date().toISOString()
+    };
+    const { error } = await supabase.from('driver_records').upsert(row, { onConflict: 'id' });
+    if (error) {
+      console.warn('Supabase driver sync warning:', error.message);
+      return { success: false, error: error.message };
+    }
+    return { success: true };
+  } catch (err: any) {
+    console.warn('Supabase driver sync exception:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+export async function fetchDriversFromSupabase(): Promise<DriverRecord[] | null> {
+  if (!isSupabaseConfigured || !supabase) return null;
+  try {
+    const { data, error } = await supabase.from('driver_records').select('*');
+    if (error) {
+      console.warn('Supabase fetch drivers warning:', error.message);
+      return null;
+    }
+    if (!data) return [];
+    return data.map((row: any): DriverRecord => ({
+      id: row.id,
+      transporterId: row.transporter_id || row.transporterId,
+      transporterName: row.transporter_name || row.transporterName,
+      fullName: row.full_name || row.fullName,
+      phone: row.phone,
+      email: row.email,
+      licenseNumber: row.license_number || row.licenseNumber,
+      experienceYears: Number(row.experience_years ?? row.experienceYears ?? 1),
+      assignedVehicleId: row.assigned_vehicle_id || row.assignedVehicleId,
+      assignedVehicleNumber: row.assigned_vehicle_number || row.assignedVehicleNumber,
+      passcode: row.passcode || '1234',
+      status: row.status || 'active',
+      rating: Number(row.rating ?? 5),
+      joinedAt: row.joined_at || row.joinedAt || new Date().toISOString()
+    }));
+  } catch (err) {
+    console.warn('Supabase fetch drivers exception:', err);
+    return null;
+  }
+}
+
+/**
+ * CLOUD DATABASE PERSISTENCE: CUSTOMER FREIGHT REQUIREMENTS
+ */
+export async function syncFreightRequirementToSupabase(req: CustomerFreightRequirement): Promise<{ success: boolean; error?: string }> {
+  if (!isSupabaseConfigured || !supabase) return { success: true };
+  try {
+    const row = {
+      id: req.id,
+      customer_id: req.customerId,
+      customer_name: req.customerName,
+      customer_phone: req.customerPhone,
+      pickup_location: req.pickupLocation,
+      delivery_location: req.deliveryLocation,
+      pickup_date: req.pickupDate,
+      vehicle_type: req.vehicleType,
+      quantity_required: req.quantityRequired,
+      goods_description: req.goodsDescription,
+      target_budget_per_vehicle: req.targetBudgetPerVehicle || null,
+      status: req.status,
+      created_at: req.createdAt
+    };
+    const { error } = await supabase.from('freight_requirements').upsert(row, { onConflict: 'id' });
+    if (error) {
+      console.warn('Supabase freight requirement sync warning:', error.message);
+      return { success: false, error: error.message };
+    }
+    return { success: true };
+  } catch (err: any) {
+    console.warn('Supabase freight requirement sync exception:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+export async function fetchFreightRequirementsFromSupabase(): Promise<CustomerFreightRequirement[] | null> {
+  if (!isSupabaseConfigured || !supabase) return null;
+  try {
+    const { data, error } = await supabase.from('freight_requirements').select('*');
+    if (error) {
+      console.warn('Supabase fetch freight requirements warning:', error.message);
+      return null;
+    }
+    if (!data) return [];
+    return data.map((row: any): CustomerFreightRequirement => ({
+      id: row.id,
+      customerId: row.customer_id || row.customerId,
+      customerName: row.customer_name || row.customerName,
+      customerPhone: row.customer_phone || row.customerPhone,
+      pickupLocation: row.pickup_location || row.pickupLocation,
+      deliveryLocation: row.delivery_location || row.deliveryLocation,
+      pickupDate: row.pickup_date || row.pickupDate,
+      vehicleType: row.vehicle_type || row.vehicleType,
+      quantityRequired: Number(row.quantity_required ?? row.quantityRequired ?? 1),
+      goodsDescription: row.goods_description || row.goodsDescription,
+      targetBudgetPerVehicle: row.target_budget_per_vehicle ? Number(row.target_budget_per_vehicle) : undefined,
+      status: row.status || 'open',
+      createdAt: row.created_at || row.createdAt
+    }));
+  } catch (err) {
+    console.warn('Supabase fetch freight requirements exception:', err);
+    return null;
   }
 }

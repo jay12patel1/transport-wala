@@ -283,3 +283,19 @@ export interface JobApplication {
   status: 'applied' | 'shortlisted' | 'rejected';
   appliedAt: string;
 }
+
+export interface CustomerFreightRequirement {
+  id: string;
+  customerId: string;
+  customerName: string;
+  customerPhone: string;
+  pickupLocation: string;
+  deliveryLocation: string;
+  pickupDate: string;
+  vehicleType: string;
+  quantityRequired: number;
+  goodsDescription: string;
+  targetBudgetPerVehicle?: number;
+  status: 'open' | 'fulfilled' | 'closed';
+  createdAt: string;
+}

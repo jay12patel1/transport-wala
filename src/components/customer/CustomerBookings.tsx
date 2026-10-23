@@ -156,12 +156,14 @@ export const CustomerBookings: React.FC = () => {
                     </div>
 
                     <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200">
-                      <span className="text-slate-500 font-medium block">Driver & Telematics</span>
+                      <span className="text-slate-500 font-medium block">Driver &amp; Telematics</span>
                       <p className="font-bold text-slate-900 mt-1">
                         {order.driverName || 'Driver Assigned'}
                       </p>
                       <p className="text-[11px] text-slate-600 mt-0.5">
-                        Phone: {order.driverPhone || order.transporterPhone}
+                        Phone: {['accepted', 'assigned', 'trip_started', 'reached_pickup', 'loading_completed', 'in_transit', 'reached_destination', 'delivered', 'completed'].includes(order.status)
+                          ? (order.driverPhone || order.transporterPhone)
+                          : '+91 XXXXX-XXXXX (Hidden until approval)'}
                       </p>
                       {isLive && (
                         <span className="inline-block text-[10px] font-bold text-blue-600 animate-pulse mt-1">
@@ -211,12 +213,22 @@ export const CustomerBookings: React.FC = () => {
                     </button>
 
                     {/* Call Driver */}
-                    <button
-                      onClick={() => showToast(`Dialing Driver (${order.driverPhone || order.transporterPhone})...`)}
-                      className="px-3.5 py-2.5 bg-white hover:bg-slate-50 border border-slate-300 text-slate-800 rounded-xl font-bold flex items-center gap-1.5 transition"
-                    >
-                      <Phone className="w-3.5 h-3.5 text-emerald-600" /> Call Driver
-                    </button>
+                    {['accepted', 'assigned', 'trip_started', 'reached_pickup', 'loading_completed', 'in_transit', 'reached_destination', 'delivered', 'completed'].includes(order.status) ? (
+                      <button
+                        onClick={() => showToast(`Dialing Driver (${order.driverPhone || order.transporterPhone})...`)}
+                        className="px-3.5 py-2.5 bg-white hover:bg-slate-50 border border-slate-300 text-slate-800 rounded-xl font-bold flex items-center gap-1.5 transition"
+                      >
+                        <Phone className="w-3.5 h-3.5 text-emerald-600" /> Call Driver
+                      </button>
+                    ) : (
+                      <button
+                        disabled
+                        className="px-3.5 py-2.5 bg-slate-100 border border-slate-200 text-slate-400 rounded-xl font-bold flex items-center gap-1.5 cursor-not-allowed"
+                        title="Contact numbers will be visible after booking approval"
+                      >
+                        <Phone className="w-3.5 h-3.5 text-slate-400" /> Available after approval
+                      </button>
+                    )}
 
                     {/* Tax Invoice */}
                     <button

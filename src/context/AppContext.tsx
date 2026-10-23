@@ -4,7 +4,7 @@ import {
   DocStatus, DocType, OrderStatus, TransporterEarning, Settlement, 
   Complaint, NotificationItem, AdminSettings, Language, ChatMessage, 
   VehicleDocument, DriverRecord, AuthSession, AuthCredentials,
-  DriverJobVacancy, JobApplication
+  DriverJobVacancy, JobApplication, CustomerFreightRequirement
 } from '../types';
 import { 
   DEMO_USERS, INITIAL_VEHICLES, INITIAL_BOOKINGS, 
@@ -16,11 +16,20 @@ import { translations } from '../data/translations';
 import { getVehicleImage } from '../utils/vehicleImages';
 import { 
   isSupabaseConfigured, 
+  supabase,
   signInAdminWithSupabase, 
   updateSupabasePassword, 
   updateSupabaseEmail, 
   requestSupabasePasswordReset, 
-  signOutSupabase 
+  signOutSupabase,
+  syncVehicleToSupabase,
+  fetchVehiclesFromSupabase,
+  syncBookingToSupabase,
+  fetchBookingsFromSupabase,
+  syncDriverToSupabase,
+  fetchDriversFromSupabase,
+  syncFreightRequirementToSupabase,
+  fetchFreightRequirementsFromSupabase
 } from '../lib/supabase';
 
 interface SearchQuery {
@@ -156,6 +165,12 @@ interface AppContextType {
     resumeUrl?: string;
   }) => { success: boolean; message?: string };
   updateApplicationStatus: (applicationId: string, status: 'applied' | 'shortlisted' | 'rejected') => void;
+
+  // Customer Freight Requirements (Bulk Loads)
+  freightRequirements: CustomerFreightRequirement[];
+  allFreightRequirements: CustomerFreightRequirement[];
+  addFreightRequirement: (req: Omit<CustomerFreightRequirement, 'id' | 'createdAt' | 'status'>) => CustomerFreightRequirement;
+  updateFreightRequirementStatus: (id: string, status: 'open' | 'fulfilled' | 'closed') => void;
 
   // Toast message
   toastMessage: string | null;
@@ -299,35 +314,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return INITIAL_DRIVERS; // []
   });
 
-  // Current session & auth
-  const [session, setSession] = useState<AuthSession | null>(() => {
+  // Current session & auth - Strict memory state (clears on reload/tab close, starts logged out on landing)
+  const [session, setSession] = useState<AuthSession | null>(null);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [user, setUser] = useState<UserProfile>(DEFAULT_UNAUTH_USER);
+  const [role, setRole] = useState<UserRole>('customer');
+  const [screen, setScreenState] = useState<string>('landing');
+  const [securityAlert, setSecurityAlert] = useState<SecurityAlert | null>(null);
+
+  // Clear any legacy persistent session tokens so reload starts logged out
+  useEffect(() => {
     try {
-      const saved = localStorage.getItem(AUTH_STORAGE_KEY);
-      if (saved) {
-        const parsed: AuthSession = JSON.parse(saved);
-        if (parsed.user && parsed.role && !['usr_cust_001', 'usr_trans_001', 'usr_drv_001'].includes(parsed.user.id)) {
-          return parsed;
-        }
-      }
+      localStorage.removeItem(AUTH_STORAGE_KEY);
+      localStorage.removeItem('transport_wala_auth_session');
+      localStorage.removeItem('tw_session');
     } catch (e) {
       console.error(e);
     }
-    // Default to unauthenticated visitor
-    return null;
-  });
-
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => Boolean(session));
-  const [user, setUser] = useState<UserProfile>(session?.user || DEFAULT_UNAUTH_USER);
-  const [role, setRole] = useState<UserRole>(session?.role || 'customer');
-  const [screen, setScreenState] = useState<string>(() => {
-    if (!session) return 'landing';
-    if (session.role === 'customer') return 'home';
-    if (session.role === 'transporter') return 'transporter_dashboard';
-    if (session.role === 'driver') return 'driver_mode';
-    if (session.role === 'admin') return 'admin_dashboard';
-    return 'home';
-  });
-  const [securityAlert, setSecurityAlert] = useState<SecurityAlert | null>(null);
+  }, []);
 
   // App settings & toast
   const [adminSettings, setAdminSettings] = useState<AdminSettings>(INITIAL_ADMIN_SETTINGS);
@@ -351,7 +355,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed)) {
-          return parsed.filter(v => !['veh_001', 'veh_002', 'veh_003', 'veh_004', 'veh_005', 'veh_006', 'veh_007', 'veh_008', 'veh_009'].includes(v.id));
+          return parsed.filter(v => !v.id.startsWith('tw-ondemand-') && !['veh_001', 'veh_002', 'veh_003', 'veh_004', 'veh_005', 'veh_006', 'veh_007', 'veh_008', 'veh_009'].includes(v.id));
         }
       }
     } catch (e) {
@@ -417,6 +421,116 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [rawNotifications, setRawNotifications] = useState<NotificationItem[]>([]);
   const [chatMessages, setChatMessages] = useState<Record<string, ChatMessage[]>>({});
 
+  // Customer Freight Requirements State (Bulk Load Enquiries)
+  const FREIGHT_REQ_STORAGE_KEY = 'transport_wala_freight_reqs_v1';
+  const [rawFreightRequirements, setRawFreightRequirements] = useState<CustomerFreightRequirement[]>(() => {
+    try {
+      const saved = localStorage.getItem(FREIGHT_REQ_STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (e) {
+      console.error(e);
+    }
+    return [];
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(FREIGHT_REQ_STORAGE_KEY, JSON.stringify(rawFreightRequirements));
+    } catch (e) {
+      console.error(e);
+    }
+  }, [rawFreightRequirements]);
+
+  // CLOUD DATABASE PERSISTENCE: CROSS-DEVICE DATA SYNC (SUPABASE)
+  useEffect(() => {
+    if (!isSupabaseConfigured || !supabase) return;
+
+    let isMounted = true;
+
+    async function loadCloudData() {
+      try {
+        const [cloudVehicles, cloudBookings, cloudDrivers, cloudReqs] = await Promise.all([
+          fetchVehiclesFromSupabase(),
+          fetchBookingsFromSupabase(),
+          fetchDriversFromSupabase(),
+          fetchFreightRequirementsFromSupabase()
+        ]);
+
+        if (isMounted) {
+          if (cloudVehicles && cloudVehicles.length > 0) {
+            setRawVehicles(prev => {
+              const map = new Map<string, Vehicle>();
+              prev.forEach(v => map.set(v.id, v));
+              cloudVehicles.forEach(v => map.set(v.id, v));
+              return Array.from(map.values()).filter(v => !v.id.startsWith('tw-ondemand-'));
+            });
+          }
+
+          if (cloudBookings && cloudBookings.length > 0) {
+            setRawBookings(prev => {
+              const map = new Map<string, BookingOrder>();
+              prev.forEach(b => map.set(b.id, b));
+              cloudBookings.forEach(b => map.set(b.id, b));
+              return Array.from(map.values());
+            });
+          }
+
+          if (cloudDrivers && cloudDrivers.length > 0) {
+            setDriversList(prev => {
+              const map = new Map<string, DriverRecord>();
+              prev.forEach(d => map.set(d.id, d));
+              cloudDrivers.forEach(d => map.set(d.id, d));
+              return Array.from(map.values());
+            });
+          }
+
+          if (cloudReqs && cloudReqs.length > 0) {
+            setRawFreightRequirements(prev => {
+              const map = new Map<string, CustomerFreightRequirement>();
+              prev.forEach(r => map.set(r.id, r));
+              cloudReqs.forEach(r => map.set(r.id, r));
+              return Array.from(map.values());
+            });
+          }
+        }
+      } catch (err) {
+        console.warn('Initial cloud sync error:', err);
+      }
+    }
+
+    loadCloudData();
+
+    // Supabase Real-Time Subscriptions for instant cross-device updates
+    const channel = supabase.channel('marketplace_cloud_sync')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'vehicles' }, async () => {
+        const fresh = await fetchVehiclesFromSupabase();
+        if (fresh && isMounted) {
+          setRawVehicles(fresh.filter(v => !v.id.startsWith('tw-ondemand-')));
+        }
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'bookings' }, async () => {
+        const fresh = await fetchBookingsFromSupabase();
+        if (fresh && isMounted) setRawBookings(fresh);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'driver_records' }, async () => {
+        const fresh = await fetchDriversFromSupabase();
+        if (fresh && isMounted) setDriversList(fresh);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'freight_requirements' }, async () => {
+        const fresh = await fetchFreightRequirementsFromSupabase();
+        if (fresh && isMounted) setRawFreightRequirements(fresh);
+      })
+      .subscribe();
+
+    return () => {
+      isMounted = false;
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
   // Sync state to localStorage
   useEffect(() => {
     try {
@@ -466,27 +580,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [rawJobApplications]);
 
-  // Sync session
+  // Sync session (In-memory: automatically cleared on page reload or new tab)
   const saveSession = (newSession: AuthSession | null) => {
     setSession(newSession);
     if (newSession) {
       setIsAuthenticated(true);
       setUser(newSession.user);
       setRole(newSession.role);
-      try {
-        localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(newSession));
-      } catch (e) {
-        console.error(e);
-      }
     } else {
       setIsAuthenticated(false);
       setUser(DEFAULT_UNAUTH_USER);
       setRole('customer');
-      try {
-        localStorage.removeItem(AUTH_STORAGE_KEY);
-      } catch (e) {
-        console.error(e);
-      }
     }
   };
 
@@ -1087,6 +1191,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     setDriversList(prev => [newDriver, ...prev]);
+    syncDriverToSupabase(newDriver).catch(err => console.warn('Supabase driver sync warning:', err));
 
     // Also update vehicle's assigned driver if selected
     if (driverData.assignedVehicleId) {
@@ -1256,6 +1361,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setRawVehicles(prev => [newVehicle, ...prev]);
     showToast(`Vehicle ${newVehicle.vehicleNumber} added successfully! Documents submitted for Admin Verification.`);
     
+    // Cloud Database Persistence
+    syncVehicleToSupabase(newVehicle).catch(err => console.warn('Supabase vehicle sync warning:', err));
+
     // Add Admin Notification
     addNotification({
       userId: 'usr_adm_001',
@@ -1266,7 +1374,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateVehicleStatus = (vehicleId: string, status: VehicleStatus) => {
-    setRawVehicles(prev => prev.map(v => v.id === vehicleId ? { ...v, status } : v));
+    setRawVehicles(prev => prev.map(v => {
+      if (v.id === vehicleId) {
+        const updated = { ...v, status };
+        syncVehicleToSupabase(updated).catch(err => console.warn('Supabase vehicle status sync warning:', err));
+        return updated;
+      }
+      return v;
+    }));
     showToast(`Vehicle status updated to ${status.toUpperCase()}`);
   };
 
@@ -1421,6 +1536,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
     setRawBookings(prev => [newOrder, ...prev]);
 
+    // Cloud Database Persistence
+    syncBookingToSupabase(newOrder).catch(err => console.warn('Supabase booking sync warning:', err));
+
     // Send notifications to Transporter & Admin
     addNotification({
       userId: vehicle.ownerId,
@@ -1516,6 +1634,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       } else if (newStatus === 'trip_started' || newStatus === 'in_transit') {
         setRawVehicles(prev => prev.map(v => v.id === targetOrder.vehicleId ? { ...v, status: 'on_trip' } : v));
       }
+      // Cloud database sync
+      syncBookingToSupabase({ ...targetOrder, status: newStatus }).catch(err => console.warn('Supabase booking update sync warning:', err));
     }
 
     if (completedEarning) {
@@ -1541,9 +1661,62 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const assignDriver = (orderId: string, driverName: string, driverPhone: string, driverId?: string) => {
-    setRawBookings(prev => prev.map(b => b.id === orderId ? { ...b, driverName, driverPhone } : b));
+    setRawBookings(prev => prev.map(b => {
+      if (b.id === orderId) {
+        const updated = { ...b, driverName, driverPhone, driverId };
+        syncBookingToSupabase(updated).catch(err => console.warn('Supabase assign driver sync warning:', err));
+        return updated;
+      }
+      return b;
+    }));
     showToast(`Driver ${driverName} assigned to order.`);
   };
+
+  // Customer Freight Requirements (Bulk Load Enquiries)
+  const addFreightRequirement = (reqData: Omit<CustomerFreightRequirement, 'id' | 'createdAt' | 'status'>): CustomerFreightRequirement => {
+    const newReq: CustomerFreightRequirement = {
+      ...reqData,
+      id: `REQ-${Date.now().toString().slice(-6)}`,
+      status: 'open',
+      createdAt: new Date().toISOString()
+    };
+
+    setRawFreightRequirements(prev => [newReq, ...prev]);
+    showToast(`Requirement for ${newReq.quantityRequired} ${newReq.vehicleType} broadcasted to all transporters!`);
+
+    addNotification({
+      userId: 'usr_adm_001',
+      title: `New Freight Inquiry: ${newReq.id}`,
+      body: `${newReq.customerName} needs ${newReq.quantityRequired}x ${newReq.vehicleType} for ${newReq.pickupLocation} → ${newReq.deliveryLocation}`,
+      type: 'trip'
+    });
+
+    syncFreightRequirementToSupabase(newReq).catch(err => console.warn('Supabase freight requirement insert warning:', err));
+
+    return newReq;
+  };
+
+  const updateFreightRequirementStatus = (id: string, status: 'open' | 'fulfilled' | 'closed') => {
+    setRawFreightRequirements(prev => prev.map(r => {
+      if (r.id === id) {
+        const updated = { ...r, status };
+        syncFreightRequirementToSupabase(updated).catch(err => console.warn('Supabase freight requirement status warning:', err));
+        return updated;
+      }
+      return r;
+    }));
+    showToast(`Freight inquiry status updated to ${status.toUpperCase()}`);
+  };
+
+  const freightRequirements = useMemo(() => {
+    if (role === 'admin' || role === 'transporter') {
+      return rawFreightRequirements;
+    }
+    if (role === 'customer') {
+      return rawFreightRequirements.filter(r => r.customerId === user.id);
+    }
+    return rawFreightRequirements;
+  }, [rawFreightRequirements, role, user]);
 
   // GPS Simulation
   const startGpsTracking = (orderId: string) => {
@@ -1862,6 +2035,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       deleteJobVacancy,
       applyForJob,
       updateApplicationStatus,
+      freightRequirements,
+      allFreightRequirements: rawFreightRequirements,
+      addFreightRequirement,
+      updateFreightRequirementStatus,
       toastMessage,
       showToast
     }}>

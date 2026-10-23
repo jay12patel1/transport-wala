@@ -224,12 +224,22 @@ export const DriverMode: React.FC = () => {
                   </div>
 
                   <div className="flex gap-2">
-                    <button
-                      onClick={() => showToast(`Calling Customer ${assignedTrip.customerName} (${assignedTrip.customerPhone})...`)}
-                      className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow"
-                    >
-                      <Phone className="w-4 h-4" /> Call Customer
-                    </button>
+                    {['accepted', 'assigned', 'trip_started', 'reached_pickup', 'loading_completed', 'in_transit', 'reached_destination', 'delivered', 'completed'].includes(assignedTrip.status) ? (
+                      <button
+                        onClick={() => showToast(`Calling Customer ${assignedTrip.customerName} (${assignedTrip.customerPhone})...`)}
+                        className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow"
+                      >
+                        <Phone className="w-4 h-4" /> Call Customer
+                      </button>
+                    ) : (
+                      <button
+                        disabled
+                        className="px-4 py-2 bg-slate-800 text-slate-500 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-not-allowed"
+                        title="Contact number will be visible after booking approval"
+                      >
+                        <Phone className="w-4 h-4" /> Available after approval
+                      </button>
+                    )}
                     <button
                       onClick={() => setShowChat(true)}
                       className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5"

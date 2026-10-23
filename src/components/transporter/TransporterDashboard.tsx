@@ -8,14 +8,16 @@ import { ChatModal } from '../shared/ChatModal';
 import { 
   Truck, PlusCircle, FileText, Wallet, CheckCircle2, 
   XCircle, Clock, MapPin, Phone, MessageSquare, 
-  Navigation, ShieldCheck, ArrowRight, User, Briefcase 
+  Navigation, ShieldCheck, ArrowRight, User, Briefcase,
+  PackageCheck, IndianRupee, Send
 } from 'lucide-react';
 
 export const TransporterDashboard: React.FC = () => {
   const { 
     user, vehicles, bookings, earnings, 
     updateOrderStatus, setScreen, showToast,
-    jobVacancies, jobApplications 
+    jobVacancies, jobApplications,
+    freightRequirements, updateFreightRequirementStatus
   } = useApp();
 
   const [showAddModal, setShowAddModal] = useState(false);
@@ -36,6 +38,7 @@ export const TransporterDashboard: React.FC = () => {
   const activeTrips = myBookings.filter(b => 
     ['accepted', 'assigned', 'trip_started', 'reached_pickup', 'loading_completed', 'in_transit', 'reached_destination'].includes(b.status)
   );
+  const openRequirements = freightRequirements.filter(r => r.status === 'open');
 
   const totalEarnings = myEarnings.reduce((acc, curr) => acc + curr.netEarnings, 0);
 
@@ -167,6 +170,75 @@ export const TransporterDashboard: React.FC = () => {
         </button>
       </div>
 
+      {/* Marketplace Load Inquiries / Customer Bulk Requirements Section */}
+      <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
+        <div className="p-5 bg-gradient-to-r from-amber-900 via-slate-900 to-amber-950 text-white flex flex-wrap justify-between items-center gap-2">
+          <div className="flex items-center gap-2">
+            <PackageCheck className="w-5 h-5 text-amber-400" />
+            <h3 className="font-extrabold text-sm text-white">
+              Marketplace Load Inquiries / Customer Requirements ({openRequirements.length})
+            </h3>
+          </div>
+          <span className="text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-400/30 px-2.5 py-1 rounded-full">
+            Real-Time Shipper Demands
+          </span>
+        </div>
+
+        <div className="p-5 divide-y divide-slate-100">
+          {openRequirements.length === 0 ? (
+            <div className="py-8 text-center text-xs text-slate-400">
+              No open customer load inquiries at the moment. As shippers post bulk truck demands, they will broadcast here for immediate fleet allocation.
+            </div>
+          ) : (
+            openRequirements.map(req => (
+              <div key={req.id} className="py-4 first:pt-0 last:pb-0 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 text-xs">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono font-bold text-slate-900 text-sm">{req.id}</span>
+                    <span className="text-xs bg-amber-50 text-amber-800 border border-amber-200 px-2.5 py-0.5 rounded-full font-bold">
+                      {req.quantityRequired}x {req.vehicleType}
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-mono">
+                      {new Date(req.createdAt).toLocaleDateString()}
+                    </span>
+                  </div>
+                  <p className="text-slate-700 font-bold">
+                    Shipper: {req.customerName} • <span className="text-slate-400 font-mono">+91 XXXXX-XXXXX (Revealed on acceptance)</span>
+                  </p>
+                  <p className="text-slate-600 flex items-center gap-1.5 font-medium">
+                    <MapPin className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                    <strong>Route:</strong> {req.pickupLocation} → {req.deliveryLocation} (Pickup: {req.pickupDate})
+                  </p>
+                  <p className="text-slate-500 text-[11px] bg-slate-50 p-2 rounded-xl border border-slate-100 mt-1">
+                    <strong>Cargo:</strong> {req.goodsDescription}
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-4 w-full md:w-auto justify-between md:justify-end shrink-0">
+                  <div className="text-right">
+                    <span className="text-[10px] text-slate-400 block font-medium">Target Budget</span>
+                    <span className="font-mono font-black text-emerald-600 text-base">
+                      {req.targetBudgetPerVehicle ? `₹${req.targetBudgetPerVehicle.toLocaleString('en-IN')}/trk` : 'Negotiable'}
+                    </span>
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      updateFreightRequirementStatus(req.id, 'fulfilled');
+                      showToast(`Accepted inquiry ${req.id} for ${req.quantityRequired}x ${req.vehicleType}! Dedicated fleet allocated.`);
+                    }}
+                    className="px-4 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl font-black flex items-center gap-1.5 shadow-md shadow-amber-500/20 transition whitespace-nowrap"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                    <span>Submit Quote / Accept Request</span>
+                  </button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+
       {/* Booking Requests Queue */}
       <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
         <div className="p-5 bg-slate-900 text-white flex justify-between items-center">
@@ -194,7 +266,7 @@ export const TransporterDashboard: React.FC = () => {
                     </span>
                   </div>
                   <p className="text-slate-600 font-semibold mt-1">
-                    Customer: {req.customerName} ({req.customerCompany}) • {req.customerPhone}
+                    Customer: {req.customerName} ({req.customerCompany}) • <span className="text-slate-400 font-mono">+91 XXXXX-XXXXX (Hidden until approval)</span>
                   </p>
                   <p className="text-slate-500 mt-0.5 flex items-center gap-1.5">
                     <MapPin className="w-3.5 h-3.5 text-blue-600" />
