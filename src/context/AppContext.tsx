@@ -70,6 +70,7 @@ interface AppContextType {
   logout: () => void;
   switchUser: (role: UserRole) => void;
   updateUserProfile: (data: Partial<UserProfile>) => void;
+  saveUserProfileToSupabase?: (userData: any) => Promise<boolean>;
   registeredUsers: UserProfile[];
 
   // Super Admin Security & Credentials
@@ -1205,11 +1206,64 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     else if (effectiveRole === 'driver') setScreenState('driver_mode');
     else if (effectiveRole === 'admin') setScreenState('admin_dashboard');
 
+    // Make sure user profile is saved/upserted to Supabase on login as requested
+    if (effectiveRole !== 'admin') {
+      saveUserProfileToSupabase(matchedUser).catch(err => {
+        console.error("User sync error on login:", err);
+      });
+    }
+
     showToast(`Welcome back, ${matchedUser.fullName}! Logged in as ${effectiveRole.toUpperCase()}.`);
     return { success: true };
   };
 
-  // DIRECT USER REGISTRATION TO SUPABASE `users` TABLE
+  // REUSABLE USER PROFILE PERSISTENCE FUNCTION FOR SUPABASE `users` TABLE
+  const saveUserProfileToSupabase = async (userData: any): Promise<boolean> => {
+    const userPayload = {
+      id: userData.id || `usr_${Date.now()}`,
+      role: userData.role || 'customer',
+      fullName: userData.fullName || userData.name || 'User',
+      companyName: userData.companyName || '',
+      phone: String(userData.phone || ''),
+      email: userData.email || '',
+      password: userData.password || '',
+      gstNumber: userData.gstNumber || '',
+      address: userData.address || '',
+      rating: 5.0,
+      isVerified: true,
+      status: 'active' as const
+    };
+
+    if (supabase) {
+      try {
+        const { data, error } = await supabase
+          .from('users')
+          .upsert([userPayload], { onConflict: 'id' })
+          .select();
+
+        if (error) {
+          console.error("User save error in Supabase:", error);
+          showToast(`User Save Error: ${error.message}`);
+          return false;
+        } else {
+          console.log("User saved successfully:", data);
+          setUser(userPayload);
+          showToast("User profile saved successfully to database!");
+          return true;
+        }
+      } catch (err: any) {
+        console.error("User save error in Supabase:", err);
+        showToast(`User Save Error: ${err.message || 'Failed to save profile'}`);
+        return false;
+      }
+    } else {
+      setUser(userPayload);
+      showToast("User profile saved successfully to database!");
+      return true;
+    }
+  };
+
+  // DIRECT USER REGISTRATION / SIGNUP TO SUPABASE `users` TABLE
   const register = async (
     roleOrUserData: UserRole | any, 
     data?: any
@@ -1224,13 +1278,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return false;
     }
 
-    // Construct the new user payload matching the Supabase `users` table columns:
-    const newUser = {
-      id: `usr_${Date.now()}`,
+    const userPayload = {
+      id: userData.id || `usr_${Date.now()}`,
       role: userData.role || 'customer',
-      fullName: userData.fullName || userData.name || '',
+      fullName: userData.fullName || userData.name || 'User',
       companyName: userData.companyName || '',
-      phone: userData.phone,
+      phone: String(userData.phone || ''),
       email: userData.email || '',
       password: userData.password || '',
       gstNumber: userData.gstNumber || '',
@@ -1241,68 +1294,68 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     if (supabase) {
-      const { data: dbData, error } = await supabase.from('users').insert([newUser]).select();
+      const { data, error } = await supabase
+        .from('users')
+        .upsert([userPayload], { onConflict: 'id' })
+        .select();
+
       if (error) {
-        console.error("Supabase user insert error:", error);
-        showToast(`Registration Error: ${error.message}`);
+        console.error("User save error in Supabase:", error);
+        showToast(`User Save Error: ${error.message}`);
         return false;
       } else {
+        console.log("User saved successfully:", data);
+        setUser(userPayload);
+        showToast("User profile saved successfully to database!");
+
         const fullProfile: UserProfile = {
-          ...newUser,
+          ...userPayload,
           phone_verified: true,
           phoneVerified: true,
           createdAt: new Date().toISOString().split('T')[0]
         };
 
-        setUser(fullProfile);
-        setRegisteredUsers(prev => [...prev.filter(u => u.phone !== fullProfile.phone), fullProfile]);
+        setRegisteredUsers(prev => [...prev.filter(u => u.phone !== fullProfile.phone && u.id !== fullProfile.id), fullProfile]);
 
         // If driver, also record into driversList
-        if (newUser.role === 'driver') {
+        if (userPayload.role === 'driver') {
           const newDriverRecord: DriverRecord = {
-            id: newUser.id,
+            id: userPayload.id,
             transporterId: 'usr_trans_independent',
             transporterName: 'Independent Commercial Fleet',
-            fullName: newUser.fullName,
-            phone: newUser.phone,
-            email: newUser.email,
+            fullName: userPayload.fullName,
+            phone: userPayload.phone,
+            email: userPayload.email,
             licenseNumber: `GJ01-${Date.now().toString().slice(-6)}`,
             experienceYears: 5,
             status: 'active',
             rating: 5.0,
             joinedAt: new Date().toISOString().split('T')[0],
-            passcode: newUser.password || '4321',
-            password: newUser.password || 'password123'
+            passcode: userPayload.password || '4321',
+            password: userPayload.password || 'password123'
           };
           setDriversList(prev => [newDriverRecord, ...prev]);
           syncDriverToSupabase(newDriverRecord).catch(err => console.warn('Supabase driver sync warning:', err));
         }
 
         const newSession: AuthSession = {
-          token: `jwt_${newUser.id}`,
+          token: `jwt_${userPayload.id}`,
           user: fullProfile,
-          role: newUser.role as UserRole,
+          role: userPayload.role as UserRole,
           expiresAt: new Date(Date.now() + 7 * 86400000).toISOString()
         };
         saveSession(newSession);
 
-        if (newUser.role === 'customer') setScreenState('home');
-        else if (newUser.role === 'transporter') setScreenState('transporter_dashboard');
-        else if (newUser.role === 'driver') setScreenState('driver_mode');
+        if (userPayload.role === 'customer') setScreenState('home');
+        else if (userPayload.role === 'transporter') setScreenState('transporter_dashboard');
+        else if (userPayload.role === 'driver') setScreenState('driver_mode');
 
-        showToast("Registration successful! Account saved to cloud.");
         return true;
       }
     } else {
-      const fullProfile: UserProfile = {
-        ...newUser,
-        phone_verified: true,
-        phoneVerified: true,
-        createdAt: new Date().toISOString().split('T')[0]
-      };
-      setUser(fullProfile);
-      setRegisteredUsers(prev => [...prev.filter(u => u.phone !== fullProfile.phone), fullProfile]);
-      showToast("Registration successful! Account saved to cloud.");
+      setUser(userPayload);
+      setRegisteredUsers(prev => [...prev.filter(u => u.phone !== userPayload.phone), userPayload as UserProfile]);
+      showToast("User profile saved successfully to database!");
       return true;
     }
   };
@@ -2567,6 +2620,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       logout,
       switchUser,
       updateUserProfile,
+      saveUserProfileToSupabase,
       registeredUsers,
       adminSecurityInfo,
       changeAdminPassword,
