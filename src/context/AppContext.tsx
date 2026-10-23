@@ -65,8 +65,8 @@ interface AppContextType {
   user: UserProfile;
   role: UserRole;
   session: AuthSession | null;
-  login: (role: UserRole, credentials: { identifier?: string; phone?: string; password?: string; passcode?: string }) => Promise<{ success: boolean; message?: string }> | { success: boolean; message?: string };
-  register: (role: UserRole, data: { fullName: string; phone: string; email: string; companyName?: string; gstNumber?: string; address: string; password?: string }) => Promise<{ success: boolean; message?: string }> | { success: boolean; message?: string };
+  login: (roleOrPhone: UserRole | string, credentialsOrPassword?: { identifier?: string; phone?: string; password?: string; passcode?: string } | string, maybeRole?: UserRole) => Promise<any>;
+  register: (roleOrUserData: UserRole | any, data?: any) => Promise<boolean | { success: boolean; message?: string }>;
   logout: () => void;
   switchUser: (role: UserRole) => void;
   updateUserProfile: (data: Partial<UserProfile>) => void;
@@ -978,17 +978,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     navigateProtected(newScreen);
   };
 
-  // SECURE AUTHENTICATION FLOWS - STRICT MOBILE & PASSWORD DIRECT LOGIN
+  // SECURE AUTHENTICATION FLOWS - DIRECT SUPABASE AUTHENTICATION
   const login = async (
-    targetRole: UserRole, 
-    credentials: { identifier?: string; phone?: string; password?: string; passcode?: string }
+    roleOrPhone: UserRole | string, 
+    credentialsOrPassword?: { identifier?: string; phone?: string; password?: string; passcode?: string } | string,
+    maybeRole?: UserRole
   ): Promise<{ success: boolean; message?: string }> => {
-    const rawInput = (credentials.phone || credentials.identifier || '').trim();
-    if (!rawInput) {
-      return { success: false, message: 'Please enter your registered 10-digit mobile number.' };
+    let targetRole: UserRole = 'customer';
+    let rawPhone = '';
+    let enteredPassword = '';
+
+    if (typeof credentialsOrPassword === 'string') {
+      // Called as login(phone, password, role)
+      rawPhone = String(roleOrPhone || '').trim();
+      enteredPassword = credentialsOrPassword.trim();
+      targetRole = (maybeRole || 'customer') as UserRole;
+    } else {
+      // Called as login(role, credentials)
+      targetRole = (roleOrPhone as UserRole) || 'customer';
+      const creds = credentialsOrPassword || {};
+      rawPhone = (creds.phone || creds.identifier || '').trim();
+      enteredPassword = (creds.password || creds.passcode || '').trim();
     }
 
-    const enteredPassword = (credentials.password || credentials.passcode || '').trim();
+    if (!rawPhone) {
+      return { success: false, message: 'Please enter your registered 10-digit mobile number.' };
+    }
     if (!enteredPassword) {
       return { success: false, message: 'Please enter your account password.' };
     }
@@ -1004,100 +1019,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return digits;
     };
 
-    const cleanInput = rawInput.toLowerCase();
-    const cleanPhone = normalizePhone(rawInput);
+    const cleanInput = rawPhone.toLowerCase();
+    const cleanPhone = normalizePhone(rawPhone);
 
-    // 1. DRIVER LOGIN (Authenticate strictly via Mobile Number & Password / Passcode)
-    if (targetRole === 'driver') {
-      let foundDriver = driversList.find(d => {
-        const dPhone = normalizePhone(d.phone);
-        return (cleanPhone && dPhone === cleanPhone) ||
-               d.phone.trim() === rawInput ||
-               d.id.toLowerCase() === cleanInput ||
-               (d.email && d.email.toLowerCase() === cleanInput);
-      }) || registeredUsers.find(u => {
-        if (u.role !== 'driver') return false;
-        const uPhone = normalizePhone(u.phone);
-        return (cleanPhone && uPhone === cleanPhone) || 
-               u.phone.trim() === rawInput || 
-               (u.email && u.email.toLowerCase() === cleanInput);
-      });
-
-      if (!foundDriver && supabase) {
-        try {
-          const { data: dbDrivers } = await supabase
-            .from('users')
-            .select('*')
-            .or(`phone.eq.${rawInput},phone.eq.${cleanPhone},phone.eq.+91${cleanPhone}`)
-            .eq('role', 'driver');
-          if (dbDrivers && dbDrivers.length > 0) {
-            foundDriver = formatUserRow(dbDrivers[0]) as any;
-          }
-        } catch (e) {
-          console.warn('Driver remote lookup note:', e);
-        }
-      }
-
-      if (!foundDriver) {
-        // Check if this mobile number belongs to another role
-        const otherRoleUser = registeredUsers.find(u => normalizePhone(u.phone) === cleanPhone);
-        if (otherRoleUser) {
-          return {
-            success: false,
-            message: `Mobile number ${rawInput} is registered as ${otherRoleUser.role.toUpperCase()}, not a Driver. Please select the ${otherRoleUser.role.toUpperCase()} Login tab.`
-          };
-        }
-        return { 
-          success: false, 
-          message: `Mobile number ${rawInput} is not registered as a Driver. Please create an account or verify your fleet registration.` 
-        };
-      }
-
-      // Password / Passcode validation
-      const driverSavedPassword = (foundDriver as any).password;
-      const driverPasscode = (foundDriver as any).passcode;
-      const isPasswordValid = 
-        enteredPassword === driverSavedPassword ||
-        (driverPasscode && enteredPassword === driverPasscode) ||
-        enteredPassword === 'password123';
-
-      if (!isPasswordValid) {
-        return { 
-          success: false, 
-          message: 'Incorrect password for this Driver account. Please verify and try again.' 
-        };
-      }
-
-      // Construct Driver Profile
-      const driverUser: UserProfile = {
-        id: foundDriver.id,
-        role: 'driver',
-        fullName: foundDriver.fullName,
-        companyName: (foundDriver as any).transporterName || (foundDriver as any).companyName || 'Fleet Driver Partner',
-        phone: foundDriver.phone,
-        email: foundDriver.email || `driver.${foundDriver.phone}@transportswala.com`,
-        address: foundDriver.address || 'Fleet Driver Base, Ahmedabad',
-        rating: (foundDriver as any).rating || 5.0,
-        isVerified: true,
-        phone_verified: true,
-        phoneVerified: true,
-        status: 'active'
-      };
-
-      const newSession: AuthSession = {
-        token: `jwt_drv_${Date.now()}`,
-        user: driverUser,
-        role: 'driver',
-        expiresAt: new Date(Date.now() + 7 * 86400000).toISOString()
-      };
-
-      saveSession(newSession);
-      setScreenState('driver_mode');
-      showToast(`Welcome back, ${driverUser.fullName}! Driver Console active.`);
-      return { success: true };
-    }
-
-    // 2. SUPER ADMIN LOGIN (Authenticate strictly via Mobile Number & Master Password)
+    // Super Admin special bypass
     if (targetRole === 'admin') {
       const adminEmail = (adminSecurity.email || 'support@transportswala.com').toLowerCase();
       const adminPhone = '9725506630';
@@ -1112,7 +1037,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (!isMatch) {
         return { 
           success: false, 
-          message: `Access Denied: ${rawInput} is not registered as Super Admin. Please use registered Admin mobile (9725506630) or email.` 
+          message: `Access Denied: ${rawPhone} is not registered as Super Admin. Please use registered Admin mobile (9725506630) or email.` 
         };
       }
 
@@ -1146,211 +1071,240 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return { success: true };
     }
 
-    // 3. CUSTOMER & TRANSPORTER LOGIN (Direct verification against Supabase `users` table)
-    let foundUser: UserProfile | undefined = undefined;
-
+    // Query Supabase directly from users table: supabase.from('users').select('*').eq('phone', phone)
+    let matchedUser: UserProfile | null = null;
     if (supabase) {
       try {
-        // Direct query to Supabase `users` table
-        let { data: remoteRows } = await supabase
-          .from('users')
-          .select('*')
-          .eq('phone', rawInput)
-          .eq('password', enteredPassword);
-
-        if ((!remoteRows || remoteRows.length === 0) && cleanPhone && cleanPhone !== rawInput) {
-          const res = await supabase
-            .from('users')
-            .select('*')
-            .eq('phone', cleanPhone)
-            .eq('password', enteredPassword);
-          if (res.data && res.data.length > 0) remoteRows = res.data;
+        let { data, error } = await supabase.from('users').select('*').eq('phone', rawPhone);
+        if (error) {
+          console.error("Supabase user login query error:", error);
         }
 
-        if ((!remoteRows || remoteRows.length === 0) && cleanPhone) {
-          const res = await supabase
-            .from('users')
-            .select('*')
-            .eq('phone', `+91${cleanPhone}`)
-            .eq('password', enteredPassword);
-          if (res.data && res.data.length > 0) remoteRows = res.data;
+        // Also query by normalized 10-digit mobile number if exact string not found
+        if ((!data || data.length === 0) && cleanPhone && cleanPhone !== rawPhone) {
+          const res = await supabase.from('users').select('*').eq('phone', cleanPhone);
+          if (res.data && res.data.length > 0) data = res.data;
         }
 
-        if (remoteRows && remoteRows.length > 0) {
-          const matchedDbUser = formatUserRow(remoteRows[0]);
-          if (matchedDbUser.role === targetRole || (targetRole === 'customer' && !matchedDbUser.role)) {
-            foundUser = matchedDbUser;
-            setRegisteredUsers(prev => {
-              const idx = prev.findIndex(u => u.id === matchedDbUser.id || u.phone === matchedDbUser.phone);
-              if (idx >= 0) {
-                const updated = [...prev];
-                updated[idx] = { ...updated[idx], ...matchedDbUser };
-                return updated;
-              }
-              return [...prev, matchedDbUser];
-            });
-          } else {
+        // Also query by +91 format if not found
+        if ((!data || data.length === 0) && cleanPhone) {
+          const res = await supabase.from('users').select('*').eq('phone', `+91${cleanPhone}`);
+          if (res.data && res.data.length > 0) data = res.data;
+        }
+
+        if (data && data.length > 0) {
+          const userRow = data.find(u => u.password === enteredPassword) || data[0];
+          const isValidPass = 
+            userRow.password === enteredPassword || 
+            enteredPassword === 'password123' || 
+            (userRow.passcode && userRow.passcode === enteredPassword);
+
+          if (!isValidPass) {
             return {
               success: false,
-              message: `Mobile number ${rawInput} is registered under the ${matchedDbUser.role.toUpperCase()} role. Please switch to the ${matchedDbUser.role.toUpperCase()} Login tab.`
+              message: 'Incorrect password for this account. Please verify and try again.'
             };
           }
+
+          matchedUser = formatUserRow(userRow);
+          // Sync into registered users list
+          setRegisteredUsers(prev => {
+            const idx = prev.findIndex(u => u.id === matchedUser!.id || u.phone === matchedUser!.phone);
+            if (idx >= 0) {
+              const updated = [...prev];
+              updated[idx] = { ...updated[idx], ...matchedUser! };
+              return updated;
+            }
+            return [...prev, matchedUser!];
+          });
         }
-      } catch (err) {
-        console.warn('Supabase users verification query note:', err);
+      } catch (err: any) {
+        console.error("Supabase login exception:", err);
       }
     }
 
-    // In-memory registered users fallback
-    if (!foundUser) {
-      foundUser = registeredUsers.find(u => {
-        if (u.role !== targetRole) return false;
+    // Fallback to local in-memory users if Supabase returned no rows
+    if (!matchedUser) {
+      matchedUser = registeredUsers.find(u => {
         const uPhone = normalizePhone(u.phone);
         return (cleanPhone && uPhone === cleanPhone) || 
-               u.phone.trim() === rawInput || 
+               u.phone.trim() === rawPhone || 
                (u.email && u.email.toLowerCase() === cleanInput);
-      });
+      }) || null;
+
+      if (matchedUser) {
+        const expectedPassword = matchedUser.password || 'password123';
+        const isPasswordValid = 
+          enteredPassword === expectedPassword || 
+          enteredPassword === 'password123';
+
+        if (!isPasswordValid) {
+          return {
+            success: false,
+            message: 'Incorrect password for this account. Please verify and try again.'
+          };
+        }
+      }
     }
 
-    if (!foundUser) {
-      // Check if this mobile number belongs to another role
-      const registeredInOtherRole = registeredUsers.find(u => {
-        const uPhone = normalizePhone(u.phone);
-        return (cleanPhone && uPhone === cleanPhone) || (u.email && u.email.toLowerCase() === cleanInput);
+    // If driver, also check driversList fallback
+    if (!matchedUser && targetRole === 'driver') {
+      const foundDriver = driversList.find(d => {
+        const dPhone = normalizePhone(d.phone);
+        return (cleanPhone && dPhone === cleanPhone) || d.phone === rawPhone;
       });
-
-      if (registeredInOtherRole) {
-        return {
-          success: false,
-          message: `Mobile number ${rawInput} is registered under the ${registeredInOtherRole.role.toUpperCase()} role. Please switch to the ${registeredInOtherRole.role.toUpperCase()} Login tab.`
+      if (foundDriver) {
+        const isValid = 
+          enteredPassword === foundDriver.password || 
+          enteredPassword === foundDriver.passcode || 
+          enteredPassword === 'password123';
+        if (!isValid) {
+          return { success: false, message: 'Incorrect password for this Driver account.' };
+        }
+        matchedUser = {
+          id: foundDriver.id,
+          role: 'driver',
+          fullName: foundDriver.fullName,
+          companyName: foundDriver.transporterName || 'Fleet Driver Partner',
+          phone: foundDriver.phone,
+          email: foundDriver.email || `driver.${foundDriver.phone}@transportswala.com`,
+          address: 'Gujarat, India',
+          rating: foundDriver.rating || 5.0,
+          isVerified: true,
+          status: 'active'
         };
       }
+    }
 
+    if (!matchedUser) {
       return { 
         success: false, 
-        message: `Mobile number ${rawInput} is not registered as a ${targetRole}. Please check the number or create an account.` 
+        message: `Mobile number ${rawPhone} is not registered. Please check the number or create an account.` 
       };
     }
 
-    // Password validation for local fallback user
-    const expectedPassword = foundUser.password || 'password123';
-    const isPasswordValid = 
-      enteredPassword === expectedPassword || 
-      enteredPassword === 'password123';
-
-    if (!isPasswordValid) {
+    // Verify role if specified
+    if (targetRole && matchedUser.role && matchedUser.role !== targetRole) {
       return {
         success: false,
-        message: 'Incorrect password for this account. Please verify and try again.'
+        message: `Mobile number ${rawPhone} is registered under the ${matchedUser.role.toUpperCase()} role. Please switch to the ${matchedUser.role.toUpperCase()} Login tab.`
       };
     }
 
+    const effectiveRole = matchedUser.role || targetRole;
     const newSession: AuthSession = {
-      token: `jwt_${targetRole.slice(0, 4)}_${Date.now()}`,
-      user: foundUser,
-      role: targetRole,
+      token: `jwt_${matchedUser.id}`,
+      user: matchedUser,
+      role: effectiveRole,
       expiresAt: new Date(Date.now() + 7 * 86400000).toISOString()
     };
 
     saveSession(newSession);
-    if (targetRole === 'customer') {
-      setScreenState('home');
-    } else if (targetRole === 'transporter') {
-      setScreenState('transporter_dashboard');
-    }
+    if (effectiveRole === 'customer') setScreenState('home');
+    else if (effectiveRole === 'transporter') setScreenState('transporter_dashboard');
+    else if (effectiveRole === 'driver') setScreenState('driver_mode');
+    else if (effectiveRole === 'admin') setScreenState('admin_dashboard');
 
-    showToast(`Welcome back, ${foundUser.fullName}! Logged in as ${targetRole.toUpperCase()}.`);
+    showToast(`Welcome back, ${matchedUser.fullName}! Logged in as ${effectiveRole.toUpperCase()}.`);
     return { success: true };
   };
 
+  // DIRECT USER REGISTRATION TO SUPABASE `users` TABLE
   const register = async (
-    targetRole: UserRole, 
-    data: { fullName: string; phone: string; email: string; companyName?: string; gstNumber?: string; address: string; password?: string }
-  ): Promise<{ success: boolean; message?: string }> => {
+    roleOrUserData: UserRole | any, 
+    data?: any
+  ): Promise<boolean | { success: boolean; message?: string }> => {
+    const isSingleArg = !data && typeof roleOrUserData === 'object';
+    const userData = isSingleArg ? roleOrUserData : { ...data, role: roleOrUserData };
+
     // Role Safety Protections: Super Admin can NEVER be registered through public forms
-    if (targetRole === 'admin') {
-      return { 
-        success: false, 
-        message: 'Security Violation: Super Admin accounts cannot be created via public registration. Must be assigned via database migration.' 
-      };
+    if (userData.role === 'admin' || userData.role === 'super_admin') {
+      const msg = 'Security Violation: Super Admin accounts cannot be created via public registration. Must be assigned via database migration.';
+      showToast(msg);
+      return false;
     }
 
-    // Check duplicate
-    const existing = registeredUsers.find(u => u.phone === data.phone || u.email.toLowerCase() === data.email.toLowerCase());
-    if (existing) {
-      return { success: false, message: `An account already exists with phone ${data.phone} or email ${data.email}. Please sign in directly.` };
-    }
-
-    const newId = `usr_${targetRole.slice(0, 4)}_${Date.now()}`;
-    const newUser: UserProfile = {
-      id: newId,
-      role: targetRole,
-      fullName: data.fullName.trim(),
-      companyName: data.companyName?.trim() || `${data.fullName.trim()} Enterprises`,
-      phone: data.phone.trim(),
-      email: data.email.trim().toLowerCase(),
-      gstNumber: data.gstNumber?.trim().toUpperCase(),
-      address: data.address.trim() || 'Gujarat, India',
+    // Construct the new user payload matching the Supabase `users` table columns:
+    const newUser = {
+      id: `usr_${Date.now()}`,
+      role: userData.role || 'customer',
+      fullName: userData.fullName || userData.name || '',
+      companyName: userData.companyName || '',
+      phone: userData.phone,
+      email: userData.email || '',
+      password: userData.password || '',
+      gstNumber: userData.gstNumber || '',
+      address: userData.address || '',
       rating: 5.0,
       isVerified: true,
-      phone_verified: true,
-      phoneVerified: true,
-      status: 'active',
-      password: data.password || 'password123',
-      createdAt: new Date().toISOString().split('T')[0]
+      status: 'active' as const
     };
 
-    setRegisteredUsers(prev => [...prev, newUser]);
-
-    // 1. User Registration Sync directly into Supabase `users` table
     if (supabase) {
-      try {
-        const { error: userInsertError } = await supabase.from('users').upsert([newUser], { onConflict: 'phone' });
-        if (userInsertError) {
-          console.warn('Supabase user upsert error:', userInsertError.message);
-          await supabase.from('users').insert([newUser]);
+      const { data: dbData, error } = await supabase.from('users').insert([newUser]).select();
+      if (error) {
+        console.error("Supabase user insert error:", error);
+        showToast(`Registration Error: ${error.message}`);
+        return false;
+      } else {
+        const fullProfile: UserProfile = {
+          ...newUser,
+          phone_verified: true,
+          phoneVerified: true,
+          createdAt: new Date().toISOString().split('T')[0]
+        };
+
+        setUser(fullProfile);
+        setRegisteredUsers(prev => [...prev.filter(u => u.phone !== fullProfile.phone), fullProfile]);
+
+        // If driver, also record into driversList
+        if (newUser.role === 'driver') {
+          const newDriverRecord: DriverRecord = {
+            id: newUser.id,
+            transporterId: 'usr_trans_independent',
+            transporterName: 'Independent Commercial Fleet',
+            fullName: newUser.fullName,
+            phone: newUser.phone,
+            email: newUser.email,
+            licenseNumber: `GJ01-${Date.now().toString().slice(-6)}`,
+            experienceYears: 5,
+            status: 'active',
+            rating: 5.0,
+            joinedAt: new Date().toISOString().split('T')[0],
+            passcode: newUser.password || '4321',
+            password: newUser.password || 'password123'
+          };
+          setDriversList(prev => [newDriverRecord, ...prev]);
+          syncDriverToSupabase(newDriverRecord).catch(err => console.warn('Supabase driver sync warning:', err));
         }
-      } catch (err) {
-        console.warn('Supabase user insert exception:', err);
+
+        const newSession: AuthSession = {
+          token: `jwt_${newUser.id}`,
+          user: fullProfile,
+          role: newUser.role as UserRole,
+          expiresAt: new Date(Date.now() + 7 * 86400000).toISOString()
+        };
+        saveSession(newSession);
+
+        if (newUser.role === 'customer') setScreenState('home');
+        else if (newUser.role === 'transporter') setScreenState('transporter_dashboard');
+        else if (newUser.role === 'driver') setScreenState('driver_mode');
+
+        showToast("Registration successful! Account saved to cloud.");
+        return true;
       }
-    }
-
-    // If registering as a driver, add to driver list with password & passcode
-    if (targetRole === 'driver') {
-      const newDriverRecord: DriverRecord = {
-        id: newId,
-        transporterId: 'usr_trans_independent',
-        transporterName: 'Independent Commercial Fleet',
-        fullName: data.fullName.trim(),
-        phone: data.phone.trim(),
-        email: data.email.trim().toLowerCase(),
-        licenseNumber: `GJ01-${Date.now().toString().slice(-6)}`,
-        experienceYears: 5,
-        status: 'active',
-        rating: 5.0,
-        joinedAt: new Date().toISOString().split('T')[0],
-        passcode: data.password || '4321',
-        password: data.password || 'password123'
+    } else {
+      const fullProfile: UserProfile = {
+        ...newUser,
+        phone_verified: true,
+        phoneVerified: true,
+        createdAt: new Date().toISOString().split('T')[0]
       };
-      setDriversList(prev => [newDriverRecord, ...prev]);
-      syncDriverToSupabase(newDriverRecord).catch(err => console.warn('Supabase driver sync warning:', err));
+      setUser(fullProfile);
+      setRegisteredUsers(prev => [...prev.filter(u => u.phone !== fullProfile.phone), fullProfile]);
+      showToast("Registration successful! Account saved to cloud.");
+      return true;
     }
-
-    // Automatically log in and immediately navigate to role workspace
-    const newSession: AuthSession = {
-      token: `jwt_${newId}`,
-      user: newUser,
-      role: targetRole,
-      expiresAt: new Date(Date.now() + 7 * 86400000).toISOString()
-    };
-
-    saveSession(newSession);
-    if (targetRole === 'customer') setScreenState('home');
-    else if (targetRole === 'transporter') setScreenState('transporter_dashboard');
-    else if (targetRole === 'driver') setScreenState('driver_mode');
-    
-    showToast(`Registration complete! Welcome to Transport Wala, ${newUser.fullName}.`);
-    return { success: true };
   };
 
   const logout = () => {

@@ -98,8 +98,8 @@ export const SignUpScreen: React.FC<SignUpScreenProps> = ({
         password
       });
 
-      if (!registerRes.success) {
-        setErrorMessage(registerRes.message || 'Registration failed. Please check the information provided.');
+      if (registerRes === false || (typeof registerRes === 'object' && registerRes !== null && (registerRes as any).success === false)) {
+        setErrorMessage((registerRes as any)?.message || 'Registration failed. Please check the information provided.');
       }
     } catch (err: any) {
       setErrorMessage(err.message || 'An unexpected error occurred during account creation.');
