@@ -1,26 +1,76 @@
 import { createClient } from '@supabase/supabase-js';
 import { Vehicle, BookingOrder, DriverRecord, CustomerFreightRequirement } from '../types';
 
-const supabaseUrl = (import.meta as any).env?.VITE_SUPABASE_URL || '';
-const supabaseAnonKey = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || '';
+// Robust URL validation helper
+function isValidHttpUrl(string: string): boolean {
+  try {
+    const parsed = new URL(string);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+// 1. Read environment variables
+let rawUrl = String((import.meta as any).env?.VITE_SUPABASE_URL || '').trim();
+let rawKey = String((import.meta as any).env?.VITE_SUPABASE_ANON_KEY || '').trim();
+
+// 2. Intelligent swap detection:
+// Frequently, users paste the Publishable Key into VITE_SUPABASE_URL and the Project URL into VITE_SUPABASE_ANON_KEY
+if (
+  (rawKey.startsWith('http://') || rawKey.startsWith('https://') || rawKey.includes('.supabase.co')) &&
+  (!rawUrl.startsWith('http://') && !rawUrl.startsWith('https://'))
+) {
+  const temp = rawUrl;
+  rawUrl = rawKey;
+  rawKey = temp;
+}
+
+// 3. Normalize URL:
+// Remove trailing `/rest/v1`, `/rest/v1/`, or trailing slashes (Supabase SDK handles rest endpoints internally)
+if (rawUrl) {
+  rawUrl = rawUrl.replace(/\/rest\/v1\/?$/, '').replace(/\/+$/, '');
+  if (!rawUrl.startsWith('http://') && !rawUrl.startsWith('https://') && rawUrl.includes('.supabase.co')) {
+    rawUrl = `https://${rawUrl}`;
+  }
+}
+
+const defaultFallbackUrl = 'https://placeholder-project.supabase.co';
+const defaultFallbackKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.placeholder_anon_key';
 
 export const isSupabaseConfigured = Boolean(
-  supabaseUrl && 
-  supabaseAnonKey && 
-  supabaseUrl.startsWith('https://') &&
-  !supabaseUrl.includes('placeholder')
+  rawUrl &&
+  rawKey &&
+  isValidHttpUrl(rawUrl) &&
+  !rawUrl.includes('placeholder') &&
+  !rawUrl.includes('your-project')
 );
 
-// Graceful client initialization with secure session persistence
-export const supabase = isSupabaseConfigured
-  ? createClient(supabaseUrl, supabaseAnonKey, {
+export const supabaseUrl = isValidHttpUrl(rawUrl) ? rawUrl : defaultFallbackUrl;
+export const supabaseAnonKey = rawKey || defaultFallbackKey;
+
+// Graceful client initialization with secure session persistence and crash prevention
+function initSupabaseClient() {
+  try {
+    return createClient(supabaseUrl, supabaseAnonKey, {
       auth: {
         persistSession: true,
         autoRefreshToken: true,
         detectSessionInUrl: true,
       },
-    })
-  : null;
+    });
+  } catch (err) {
+    console.warn('Failed to initialize Supabase client with current credentials, using safe fallback:', err);
+    return createClient(defaultFallbackUrl, defaultFallbackKey, {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+      },
+    });
+  }
+}
+
+export const supabase = initSupabaseClient();
 
 export interface SupabaseProfile {
   id: string;

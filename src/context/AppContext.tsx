@@ -590,28 +590,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [rawFreightRequirements]);
 
-  // 1. Fetch Vehicles on Mount & 4. Real-time Subscription (Supabase)
+  // 1. Fetch Vehicles on Mount & Real-time Subscription (Supabase)
   useEffect(() => {
-    if (!supabase) return;
-
     let isMounted = true;
 
-    // Fetch vehicles using supabase.from('vehicles').select('*')
-    const fetchVehicles = async () => {
+    const loadVehicles = async () => {
       try {
         const { data, error } = await supabase.from('vehicles').select('*');
-        if (!error && data && isMounted) {
+        if (error) {
+          console.error("Failed to load vehicles from Supabase:", error);
+        } else if (data && isMounted) {
           const loadedVehicles = data.map((row: any) => formatVehicleRow(row));
           setRawVehicles(loadedVehicles);
-        } else if (error) {
-          console.warn('Vehicles fetch warning:', error.message);
         }
       } catch (err) {
-        console.warn('Error fetching vehicles from Supabase:', err);
+        console.error("Failed to load vehicles from Supabase:", err);
       }
     };
-
-    fetchVehicles();
+    loadVehicles();
 
     // Enable Supabase channel subscription on vehicles table to listen for INSERT and UPDATE events
     const vehicleChannel = supabase
@@ -1701,91 +1697,86 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // 2. Save Added Vehicles to Supabase
   const addVehicle = async (vehicleData: Partial<Vehicle>) => {
-    if (role !== 'transporter' && role !== 'admin') {
-      showToast('Only Transporters can add fleet vehicles.');
-      return;
-    }
-
     const newId = `veh_${Date.now()}`;
     const newVehicle: Vehicle = {
       id: newId,
-      ownerId: user.id,
-      transporterName: user.companyName || user.fullName,
-      transporterPhone: user.phone,
+      ownerId: user.id || 'transporter_1',
+      transporterName: user.companyName || user.fullName || 'Transporter',
+      transporterPhone: user.phone || '9825012345',
       transporterRating: 5.0,
-      vehicleNumber: vehicleData.vehicleNumber || 'GJ-01-XX-0000',
+      vehicleNumber: vehicleData.vehicleNumber || 'GJ01XX0000',
       vehicleType: vehicleData.vehicleType || '30 ft Container',
-      vehicleCategory: vehicleData.vehicleCategory || 'Container',
-      vehicleSize: vehicleData.vehicleSize || 'Standard Commercial Size',
+      vehicleCategory: (vehicleData.vehicleCategory || 'Container') as Vehicle['vehicleCategory'],
+      vehicleSize: vehicleData.vehicleSize || 'Standard',
       capacityKg: vehicleData.capacityKg || 10000,
       capacityTon: vehicleData.capacityTon || 10,
       currentLocation: vehicleData.currentLocation || 'Ahmedabad',
-      preferredRoute: vehicleData.preferredRoute || 'Gujarat → Maharashtra',
+      preferredRoute: vehicleData.preferredRoute || 'Gujarat',
       availableFromDate: vehicleData.availableFromDate || new Date().toISOString().split('T')[0],
       isRefrigerated: !!vehicleData.isRefrigerated,
       status: 'available',
       baseFare: vehicleData.baseFare || 25000,
       perKmRate: vehicleData.perKmRate || 50,
-      driverName: vehicleData.driverName || 'Designated Driver',
-      driverPhone: vehicleData.driverPhone || user.phone,
-      imageUrl: vehicleData.imageUrl || getVehicleImage(vehicleData.vehicleType || '30 ft Container', vehicleData.vehicleCategory, vehicleData.isRefrigerated),
-      description: vehicleData.description || 'Verified commercial vehicle available for transport.',
-      isVerified: false, // Pending document check
-      documents: vehicleData.documents || [
-        {
-          id: `doc_${Date.now()}_rc`,
-          vehicleId: newId,
-          ownerId: user.id,
-          docType: 'RC',
-          docNumber: `${vehicleData.vehicleNumber || 'GJ01XX0000'}RC`,
-          issueDate: '2024-01-01',
-          expiryDate: '2039-01-01',
-          fileUrl: 'https://images.unsplash.com/photo-1589829545856-d10d557cf95f?w=600&auto=format&fit=crop&q=80',
-          fileName: 'RC_Certificate.pdf',
-          status: 'pending',
-          uploadedAt: new Date().toISOString().split('T')[0]
-        },
-        {
-          id: `doc_${Date.now()}_ins`,
-          vehicleId: newId,
-          ownerId: user.id,
-          docType: 'Insurance',
-          docNumber: 'INS-TW-99881',
-          issueDate: '2026-01-01',
-          expiryDate: '2027-01-01',
-          fileUrl: 'https://images.unsplash.com/photo-1450133064473-71024230f91b?w=600&auto=format&fit=crop&q=80',
-          fileName: 'Insurance_Policy.pdf',
-          status: 'pending',
-          uploadedAt: new Date().toISOString().split('T')[0]
-        }
-      ]
+      driverName: vehicleData.driverName || 'Driver',
+      driverPhone: vehicleData.driverPhone || '9825012345',
+      imageUrl: vehicleData.imageUrl || '',
+      description: vehicleData.description || '',
+      isVerified: true,
+      documents: []
     };
 
-    // Append newVehicle to local state so the UI updates instantly
-    setRawVehicles(prev => [newVehicle, ...prev]);
-    showToast(`Vehicle ${newVehicle.vehicleNumber} added successfully! Documents submitted for Admin Verification.`);
-    
-    // Save added vehicle directly to Supabase vehicles table
-    if (supabase) {
-      try {
-        const { error } = await supabase.from('vehicles').insert([newVehicle]);
-        if (error) {
-          // Fallback sync using mapped snake_case row if schema defines snake_case columns
-          await syncVehicleToSupabase(newVehicle);
-        }
-      } catch (err) {
-        console.warn('Supabase vehicle insert exception:', err);
-        await syncVehicleToSupabase(newVehicle);
-      }
-    }
+    try {
+      let { data, error } = await supabase
+        .from('vehicles')
+        .insert([newVehicle])
+        .select();
 
-    // Add Admin Notification
-    addNotification({
-      userId: 'usr_adm_001',
-      title: 'New Vehicle & Documents Added',
-      body: `Transporter ${newVehicle.transporterName} added ${newVehicle.vehicleNumber} (${newVehicle.vehicleType}).`,
-      type: 'document'
-    });
+      // If database has snake_case columns, attempt snake_case mapping
+      if (error && (error.message?.includes('column') || (error as any).code === '42703' || (error as any).code === 'PGRST204')) {
+        const snakeRow = {
+          id: newVehicle.id,
+          owner_id: newVehicle.ownerId,
+          transporter_name: newVehicle.transporterName,
+          transporter_phone: newVehicle.transporterPhone,
+          transporter_rating: newVehicle.transporterRating,
+          vehicle_number: newVehicle.vehicleNumber,
+          vehicle_type: newVehicle.vehicleType,
+          vehicle_category: newVehicle.vehicleCategory,
+          vehicle_size: newVehicle.vehicleSize,
+          capacity_kg: newVehicle.capacityKg,
+          capacity_ton: newVehicle.capacityTon,
+          current_location: newVehicle.currentLocation,
+          preferred_route: newVehicle.preferredRoute,
+          available_from_date: newVehicle.availableFromDate,
+          is_refrigerated: newVehicle.isRefrigerated,
+          status: newVehicle.status,
+          base_fare: newVehicle.baseFare,
+          per_km_rate: newVehicle.perKmRate,
+          driver_name: newVehicle.driverName,
+          driver_phone: newVehicle.driverPhone,
+          image_url: newVehicle.imageUrl,
+          description: newVehicle.description,
+          is_verified: newVehicle.isVerified,
+          documents: newVehicle.documents
+        };
+        const retry = await supabase.from('vehicles').insert([snakeRow]).select();
+        if (!retry.error) {
+          error = null;
+          data = retry.data;
+        }
+      }
+
+      if (error) {
+        console.error("Supabase insert error:", error);
+        showToast(`Database Error: ${error.message}`);
+      } else {
+        setRawVehicles(prev => [newVehicle, ...prev]);
+        showToast(`Vehicle ${newVehicle.vehicleNumber} saved to Supabase successfully!`);
+      }
+    } catch (err: any) {
+      console.error("Insert failed:", err);
+      showToast(`Error: ${err.message || 'Failed to save vehicle'}`);
+    }
   };
 
   // 3. Update Vehicle Status in Supabase
