@@ -88,7 +88,7 @@ export const SignUpScreen: React.FC<SignUpScreenProps> = ({
 
     try {
       // Save the account immediately without requiring any OTP verification step
-      const registerRes = register(selectedRole as UserRole, {
+      const registerRes = await register(selectedRole as UserRole, {
         fullName: fullName.trim(),
         phone: cleanMobile,
         email: email.trim().toLowerCase(),

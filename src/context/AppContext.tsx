@@ -66,7 +66,7 @@ interface AppContextType {
   role: UserRole;
   session: AuthSession | null;
   login: (role: UserRole, credentials: { identifier?: string; phone?: string; password?: string; passcode?: string }) => Promise<{ success: boolean; message?: string }> | { success: boolean; message?: string };
-  register: (role: UserRole, data: { fullName: string; phone: string; email: string; companyName?: string; gstNumber?: string; address: string; password?: string }) => { success: boolean; message?: string };
+  register: (role: UserRole, data: { fullName: string; phone: string; email: string; companyName?: string; gstNumber?: string; address: string; password?: string }) => Promise<{ success: boolean; message?: string }> | { success: boolean; message?: string };
   logout: () => void;
   switchUser: (role: UserRole) => void;
   updateUserProfile: (data: Partial<UserProfile>) => void;
@@ -153,7 +153,7 @@ interface AppContextType {
     salaryOffer: string;
     experienceRequired: number;
     requirements: string;
-  }) => { success: boolean; message?: string };
+  }) => Promise<{ success: boolean; message?: string }> | { success: boolean; message?: string };
   updateJobVacancyStatus: (vacancyId: string, status: 'open' | 'closed') => void;
   deleteJobVacancy: (vacancyId: string) => void;
   applyForJob: (jobId: string, applicationData: {
@@ -163,13 +163,14 @@ interface AppContextType {
     licenseNumber: string;
     resumeFileName: string;
     resumeUrl?: string;
-  }) => { success: boolean; message?: string };
+  }) => Promise<{ success: boolean; message?: string }> | { success: boolean; message?: string };
   updateApplicationStatus: (applicationId: string, status: 'applied' | 'shortlisted' | 'rejected') => void;
 
   // Customer Freight Requirements (Bulk Loads)
   freightRequirements: CustomerFreightRequirement[];
   allFreightRequirements: CustomerFreightRequirement[];
   addFreightRequirement: (req: Omit<CustomerFreightRequirement, 'id' | 'createdAt' | 'status'>) => CustomerFreightRequirement;
+  createFreightRequirement: (req: Omit<CustomerFreightRequirement, 'id' | 'createdAt' | 'status'>) => CustomerFreightRequirement;
   updateFreightRequirementStatus: (id: string, status: 'open' | 'fulfilled' | 'closed') => void;
 
   // Toast message
@@ -264,6 +265,122 @@ export function formatVehicleRow(row: any): Vehicle {
     description: String(row.description || ''),
     isVerified: row.isVerified !== undefined ? Boolean(row.isVerified) : (row.is_verified !== undefined ? Boolean(row.is_verified) : true),
     documents: Array.isArray(row.documents) ? row.documents : []
+  };
+}
+
+export function formatUserRow(row: any): UserProfile {
+  return {
+    id: String(row.id || `usr_${Date.now()}`),
+    role: (row.role as UserRole) || 'customer',
+    fullName: String(row.fullName || row.full_name || 'Transport User'),
+    companyName: String(row.companyName || row.company_name || ''),
+    phone: String(row.phone || row.mobile || ''),
+    email: String(row.email || ''),
+    gstNumber: row.gstNumber || row.gst_number || undefined,
+    address: String(row.address || 'Gujarat, India'),
+    rating: Number(row.rating ?? 5.0),
+    isVerified: row.isVerified !== undefined ? Boolean(row.isVerified) : (row.is_verified !== undefined ? Boolean(row.is_verified) : true),
+    phone_verified: true,
+    phoneVerified: true,
+    status: (row.status as any) || 'active',
+    password: String(row.password || 'password123'),
+    createdAt: String(row.createdAt || row.created_at || new Date().toISOString().split('T')[0])
+  };
+}
+
+export function formatJobVacancyRow(row: any): DriverJobVacancy {
+  return {
+    id: String(row.id || `job_${Date.now()}`),
+    transporterId: String(row.transporterId || row.transporter_id || ''),
+    transporterName: String(row.transporterName || row.transporter_name || 'Fleet Transporter'),
+    transporterPhone: String(row.transporterPhone || row.transporter_phone || ''),
+    vehicleType: String(row.vehicleType || row.vehicle_type || 'Commercial Truck'),
+    route: String(row.route || 'Gujarat → Western Freight'),
+    salaryOffer: String(row.salaryOffer || row.salary_offer || '₹25,000 - ₹35,000 / month'),
+    experienceRequired: Number(row.experienceRequired ?? row.experience_required ?? 2),
+    requirements: String(row.requirements || 'Commercial driving license required'),
+    status: (row.status as 'open' | 'closed') || 'open',
+    createdAt: String(row.createdAt || row.created_at || new Date().toISOString().split('T')[0])
+  };
+}
+
+export function formatJobApplicationRow(row: any): JobApplication {
+  return {
+    id: String(row.id || `app_${Date.now()}`),
+    jobId: String(row.jobId || row.job_id || ''),
+    driverId: String(row.driverId || row.driver_id || ''),
+    driverName: String(row.driverName || row.driver_name || 'Commercial Driver'),
+    driverPhone: String(row.driverPhone || row.driver_phone || ''),
+    experienceYears: Number(row.experienceYears ?? row.experience_years ?? 3),
+    licenseNumber: String(row.licenseNumber || row.license_number || ''),
+    resumeFileName: String(row.resumeFileName || row.resume_file_name || 'Commercial_Driver_Resume.pdf'),
+    resumeUrl: String(row.resumeUrl || row.resume_url || 'https://images.unsplash.com/photo-1586281380349-632531db7ed4?w=800&auto=format&fit=crop&q=80'),
+    status: (row.status as 'applied' | 'shortlisted' | 'rejected') || 'applied',
+    appliedAt: String(row.appliedAt || row.applied_at || new Date().toISOString().split('T')[0])
+  };
+}
+
+export function formatFreightRequirementRow(row: any): CustomerFreightRequirement {
+  return {
+    id: String(row.id || `REQ-${Date.now().toString().slice(-6)}`),
+    customerId: String(row.customerId || row.customer_id || ''),
+    customerName: String(row.customerName || row.customer_name || 'Commercial Shipper'),
+    customerPhone: String(row.customerPhone || row.customer_phone || ''),
+    pickupLocation: String(row.pickupLocation || row.pickup_location || 'Ahmedabad'),
+    deliveryLocation: String(row.deliveryLocation || row.delivery_location || 'Mumbai'),
+    pickupDate: String(row.pickupDate || row.pickup_date || new Date().toISOString().split('T')[0]),
+    vehicleType: String(row.vehicleType || row.vehicle_type || 'Commercial Truck'),
+    quantityRequired: Number(row.quantityRequired ?? row.quantity_required ?? 1),
+    goodsDescription: String(row.goodsDescription || row.goods_description || 'General Cargo'),
+    targetBudgetPerVehicle: row.targetBudgetPerVehicle ? Number(row.targetBudgetPerVehicle) : (row.target_budget_per_vehicle ? Number(row.target_budget_per_vehicle) : undefined),
+    status: (row.status as 'open' | 'fulfilled' | 'closed') || 'open',
+    createdAt: String(row.createdAt || row.created_at || new Date().toISOString())
+  };
+}
+
+export function formatBookingRow(row: any): BookingOrder {
+  return {
+    id: String(row.id || `ORD-2026-${Math.floor(100000 + Math.random() * 900000)}`),
+    customerId: String(row.customerId || row.customer_id || ''),
+    customerName: String(row.customerName || row.customer_name || 'Shipper'),
+    customerCompany: String(row.customerCompany || row.customer_company || ''),
+    customerPhone: String(row.customerPhone || row.customer_phone || ''),
+    transporterId: String(row.transporterId || row.transporter_id || ''),
+    transporterName: String(row.transporterName || row.transporter_name || 'Transporter'),
+    transporterPhone: String(row.transporterPhone || row.transporter_phone || ''),
+    vehicleId: String(row.vehicleId || row.vehicle_id || ''),
+    vehicleType: String(row.vehicleType || row.vehicle_type || 'Commercial Truck'),
+    vehicleNumber: String(row.vehicleNumber || row.vehicle_number || ''),
+    driverName: String(row.driverName || row.driver_name || 'Assigned Driver'),
+    driverPhone: String(row.driverPhone || row.driver_phone || ''),
+    pickupLocation: String(row.pickupLocation || row.pickup_location || ''),
+    deliveryLocation: String(row.deliveryLocation || row.delivery_location || ''),
+    pickupDate: String(row.pickupDate || row.pickup_date || new Date().toISOString().split('T')[0]),
+    baseFare: Number(row.baseFare ?? row.base_amount ?? 0),
+    loadingCharges: Number(row.loadingCharges ?? row.loading_charge ?? 0),
+    unloadingCharges: Number(row.unloadingCharges ?? row.unloading_charge ?? 0),
+    tollCharges: Number(row.tollCharges ?? row.toll_charge ?? 0),
+    otherCharges: 0,
+    gstAmount: Number(row.gstAmount ?? row.gst_amount ?? 0),
+    totalAmount: Number(row.totalAmount ?? row.total_amount ?? 0),
+    adminCommissionAmount: Number(row.adminCommissionAmount ?? row.commission_amount ?? 0),
+    transporterPayableAmount: Number(row.transporterPayableAmount ?? row.transporter_payable_amount ?? 0),
+    paymentStatus: (row.paymentStatus || row.payment_status || 'paid') as any,
+    paymentMethod: (row.paymentMethod || row.payment_mode || 'online') as any,
+    paymentTxnId: row.paymentTxnId || row.payment_txn_id,
+    status: (row.status || 'requested') as OrderStatus,
+    notes: row.notes,
+    createdAt: String(row.createdAt || row.created_at || new Date().toISOString()),
+    events: Array.isArray(row.events) ? row.events : [],
+    currentGps: row.currentGps || row.current_gps || {
+      lat: 23.0225,
+      lng: 72.5714,
+      speedKm: 0,
+      updatedAt: 'GPS Ready',
+      distanceCoveredKm: 0,
+      totalDistanceKm: 530,
+      etaMinutes: 420
+    }
   };
 }
 
@@ -533,74 +650,202 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   }, []);
 
-  // Sync for Bookings, Drivers, and Freight Requirements
+  // Comprehensive Cloud Database Sync for Users, Bookings, Driver Vacancies & Applications, Freight Requirements
   useEffect(() => {
-    if (!isSupabaseConfigured || !supabase) return;
+    if (!supabase) return;
 
     let isMounted = true;
 
-    async function loadCloudData() {
+    async function loadAllCloudData() {
+      if (!supabase) return;
       try {
-        const [cloudBookings, cloudDrivers, cloudReqs] = await Promise.all([
-          fetchBookingsFromSupabase(),
-          fetchDriversFromSupabase(),
-          fetchFreightRequirementsFromSupabase()
-        ]);
+        // 1. Fetch Users from Supabase
+        const { data: usersData, error: usersErr } = await supabase.from('users').select('*');
+        if (!usersErr && usersData && isMounted && usersData.length > 0) {
+          const loadedUsers = usersData.map(formatUserRow);
+          setRegisteredUsers(prev => {
+            const map = new Map<string, UserProfile>();
+            prev.forEach(u => map.set(u.id, u));
+            loadedUsers.forEach(u => map.set(u.id, u));
+            if (!map.has(DEMO_USERS.admin.id)) map.set(DEMO_USERS.admin.id, DEMO_USERS.admin);
+            return Array.from(map.values());
+          });
+        }
 
-        if (isMounted) {
-          if (cloudBookings && cloudBookings.length > 0) {
-            setRawBookings(prev => {
-              const map = new Map<string, BookingOrder>();
-              prev.forEach(b => map.set(b.id, b));
-              cloudBookings.forEach(b => map.set(b.id, b));
-              return Array.from(map.values());
-            });
-          }
+        // 2. Fetch Bookings from Supabase
+        const { data: bookingsData, error: bookingsErr } = await supabase.from('bookings').select('*');
+        if (!bookingsErr && bookingsData && isMounted && bookingsData.length > 0) {
+          const loadedBookings = bookingsData.map(formatBookingRow);
+          setRawBookings(prev => {
+            const map = new Map<string, BookingOrder>();
+            prev.forEach(b => map.set(b.id, b));
+            loadedBookings.forEach(b => map.set(b.id, b));
+            return Array.from(map.values());
+          });
+        }
 
-          if (cloudDrivers && cloudDrivers.length > 0) {
-            setDriversList(prev => {
-              const map = new Map<string, DriverRecord>();
-              prev.forEach(d => map.set(d.id, d));
-              cloudDrivers.forEach(d => map.set(d.id, d));
-              return Array.from(map.values());
-            });
-          }
+        // 3. Fetch Driver Vacancies from Supabase
+        const { data: vacanciesData, error: vacanciesErr } = await supabase.from('driver_vacancies').select('*');
+        if (!vacanciesErr && vacanciesData && isMounted && vacanciesData.length > 0) {
+          const loadedVacancies = vacanciesData.map(formatJobVacancyRow);
+          setRawJobVacancies(prev => {
+            const map = new Map<string, DriverJobVacancy>();
+            prev.forEach(v => map.set(v.id, v));
+            loadedVacancies.forEach(v => map.set(v.id, v));
+            return Array.from(map.values());
+          });
+        }
 
-          if (cloudReqs && cloudReqs.length > 0) {
-            setRawFreightRequirements(prev => {
-              const map = new Map<string, CustomerFreightRequirement>();
-              prev.forEach(r => map.set(r.id, r));
-              cloudReqs.forEach(r => map.set(r.id, r));
-              return Array.from(map.values());
-            });
+        // 4. Fetch Driver Applications from Supabase
+        const { data: applicationsData, error: applicationsErr } = await supabase.from('driver_applications').select('*');
+        if (!applicationsErr && applicationsData && isMounted && applicationsData.length > 0) {
+          const loadedApps = applicationsData.map(formatJobApplicationRow);
+          setRawJobApplications(prev => {
+            const map = new Map<string, JobApplication>();
+            prev.forEach(a => map.set(a.id, a));
+            loadedApps.forEach(a => map.set(a.id, a));
+            return Array.from(map.values());
+          });
+        }
+
+        // 5. Fetch Customer Freight Requirements from Supabase
+        let { data: reqsData, error: reqsErr } = await supabase.from('customer_requirements').select('*');
+        if (reqsErr || !reqsData) {
+          const fallback = await supabase.from('freight_requirements').select('*');
+          if (!fallback.error && fallback.data) {
+            reqsData = fallback.data;
+            reqsErr = null;
           }
+        }
+        if (!reqsErr && reqsData && isMounted && reqsData.length > 0) {
+          const loadedReqs = reqsData.map(formatFreightRequirementRow);
+          setRawFreightRequirements(prev => {
+            const map = new Map<string, CustomerFreightRequirement>();
+            prev.forEach(r => map.set(r.id, r));
+            loadedReqs.forEach(r => map.set(r.id, r));
+            return Array.from(map.values());
+          });
+        }
+
+        // 6. Fetch Drivers from Supabase
+        const { data: driversData, error: driversErr } = await supabase.from('driver_records').select('*');
+        if (!driversErr && driversData && isMounted && driversData.length > 0) {
+          const loadedDrivers = driversData.map((row: any): DriverRecord => ({
+            id: row.id,
+            transporterId: row.transporter_id || row.transporterId,
+            transporterName: row.transporter_name || row.transporterName,
+            fullName: row.full_name || row.fullName,
+            phone: row.phone,
+            email: row.email,
+            licenseNumber: row.license_number || row.licenseNumber,
+            experienceYears: Number(row.experience_years ?? row.experienceYears ?? 1),
+            assignedVehicleId: row.assigned_vehicle_id || row.assignedVehicleId,
+            assignedVehicleNumber: row.assigned_vehicle_number || row.assignedVehicleNumber,
+            passcode: row.passcode || '1234',
+            status: row.status || 'active',
+            rating: Number(row.rating ?? 5),
+            joinedAt: row.joined_at || row.joinedAt || new Date().toISOString().split('T')[0]
+          }));
+          setDriversList(prev => {
+            const map = new Map<string, DriverRecord>();
+            prev.forEach(d => map.set(d.id, d));
+            loadedDrivers.forEach(d => map.set(d.id, d));
+            return Array.from(map.values());
+          });
         }
       } catch (err) {
         console.warn('Initial cloud sync error:', err);
       }
     }
 
-    loadCloudData();
+    loadAllCloudData();
 
-    // Supabase Real-Time Subscriptions for Bookings, Drivers, and Freight Requirements
-    const channel = supabase.channel('marketplace_other_sync')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'bookings' }, async () => {
-        const fresh = await fetchBookingsFromSupabase();
-        if (fresh && isMounted) setRawBookings(fresh);
+    // Supabase Real-Time Subscriptions for Users, Bookings, Vacancies, Applications, Customer Requirements, Drivers
+    const appChannel = supabase.channel('marketplace_app_data_sync')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'users' }, (payload) => {
+        if (!isMounted || !payload.new) return;
+        const u = formatUserRow(payload.new);
+        setRegisteredUsers(prev => {
+          const exists = prev.some(x => x.id === u.id || x.phone === u.phone);
+          if (exists) return prev.map(x => (x.id === u.id || x.phone === u.phone) ? { ...x, ...u } : x);
+          return [...prev, u];
+        });
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'driver_records' }, async () => {
-        const fresh = await fetchDriversFromSupabase();
-        if (fresh && isMounted) setDriversList(fresh);
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'bookings' }, (payload) => {
+        if (!isMounted || !payload.new) return;
+        const b = formatBookingRow(payload.new);
+        setRawBookings(prev => {
+          const exists = prev.some(x => x.id === b.id);
+          if (exists) return prev.map(x => x.id === b.id ? { ...x, ...b } : x);
+          return [b, ...prev];
+        });
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'freight_requirements' }, async () => {
-        const fresh = await fetchFreightRequirementsFromSupabase();
-        if (fresh && isMounted) setRawFreightRequirements(fresh);
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'driver_vacancies' }, (payload) => {
+        if (!isMounted || !payload.new) return;
+        const v = formatJobVacancyRow(payload.new);
+        setRawJobVacancies(prev => {
+          const exists = prev.some(x => x.id === v.id);
+          if (exists) return prev.map(x => x.id === v.id ? { ...x, ...v } : x);
+          return [v, ...prev];
+        });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'driver_applications' }, (payload) => {
+        if (!isMounted || !payload.new) return;
+        const a = formatJobApplicationRow(payload.new);
+        setRawJobApplications(prev => {
+          const exists = prev.some(x => x.id === a.id);
+          if (exists) return prev.map(x => x.id === a.id ? { ...x, ...a } : x);
+          return [a, ...prev];
+        });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'customer_requirements' }, (payload) => {
+        if (!isMounted || !payload.new) return;
+        const r = formatFreightRequirementRow(payload.new);
+        setRawFreightRequirements(prev => {
+          const exists = prev.some(x => x.id === r.id);
+          if (exists) return prev.map(x => x.id === r.id ? { ...x, ...r } : x);
+          return [r, ...prev];
+        });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'freight_requirements' }, (payload) => {
+        if (!isMounted || !payload.new) return;
+        const r = formatFreightRequirementRow(payload.new);
+        setRawFreightRequirements(prev => {
+          const exists = prev.some(x => x.id === r.id);
+          if (exists) return prev.map(x => x.id === r.id ? { ...x, ...r } : x);
+          return [r, ...prev];
+        });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'driver_records' }, (payload) => {
+        if (!isMounted || !payload.new) return;
+        const d = payload.new as any;
+        const driverRecord: DriverRecord = {
+          id: d.id,
+          transporterId: d.transporter_id || d.transporterId,
+          transporterName: d.transporter_name || d.transporterName,
+          fullName: d.full_name || d.fullName,
+          phone: d.phone,
+          email: d.email,
+          licenseNumber: d.license_number || d.licenseNumber,
+          experienceYears: Number(d.experience_years ?? d.experienceYears ?? 1),
+          assignedVehicleId: d.assigned_vehicle_id || d.assignedVehicleId,
+          assignedVehicleNumber: d.assigned_vehicle_number || d.assignedVehicleNumber,
+          passcode: d.passcode || '1234',
+          status: d.status || 'active',
+          rating: Number(d.rating ?? 5),
+          joinedAt: d.joined_at || d.joinedAt || new Date().toISOString().split('T')[0]
+        };
+        setDriversList(prev => {
+          const exists = prev.some(x => x.id === driverRecord.id);
+          if (exists) return prev.map(x => x.id === driverRecord.id ? { ...x, ...driverRecord } : x);
+          return [driverRecord, ...prev];
+        });
       })
       .subscribe();
 
     return () => {
       isMounted = false;
-      supabase.removeChannel(channel);
+      supabase.removeChannel(appChannel);
     };
   }, []);
 
@@ -906,14 +1151,71 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return { success: true };
     }
 
-    // 3. CUSTOMER & TRANSPORTER LOGIN (Authenticate strictly via Mobile Number & Password)
-    const foundUser = registeredUsers.find(u => {
-      if (u.role !== targetRole) return false;
-      const uPhone = normalizePhone(u.phone);
-      return (cleanPhone && uPhone === cleanPhone) || 
-             u.phone.trim() === rawInput || 
-             (u.email && u.email.toLowerCase() === cleanInput);
-    });
+    // 3. CUSTOMER & TRANSPORTER LOGIN (Direct verification against Supabase `users` table)
+    let foundUser: UserProfile | undefined = undefined;
+
+    if (supabase) {
+      try {
+        // Direct query to Supabase `users` table
+        let { data: remoteRows } = await supabase
+          .from('users')
+          .select('*')
+          .eq('phone', rawInput)
+          .eq('password', enteredPassword);
+
+        if ((!remoteRows || remoteRows.length === 0) && cleanPhone && cleanPhone !== rawInput) {
+          const res = await supabase
+            .from('users')
+            .select('*')
+            .eq('phone', cleanPhone)
+            .eq('password', enteredPassword);
+          if (res.data && res.data.length > 0) remoteRows = res.data;
+        }
+
+        if ((!remoteRows || remoteRows.length === 0) && cleanPhone) {
+          const res = await supabase
+            .from('users')
+            .select('*')
+            .eq('phone', `+91${cleanPhone}`)
+            .eq('password', enteredPassword);
+          if (res.data && res.data.length > 0) remoteRows = res.data;
+        }
+
+        if (remoteRows && remoteRows.length > 0) {
+          const matchedDbUser = formatUserRow(remoteRows[0]);
+          if (matchedDbUser.role === targetRole || (targetRole === 'customer' && !matchedDbUser.role)) {
+            foundUser = matchedDbUser;
+            setRegisteredUsers(prev => {
+              const idx = prev.findIndex(u => u.id === matchedDbUser.id || u.phone === matchedDbUser.phone);
+              if (idx >= 0) {
+                const updated = [...prev];
+                updated[idx] = { ...updated[idx], ...matchedDbUser };
+                return updated;
+              }
+              return [...prev, matchedDbUser];
+            });
+          } else {
+            return {
+              success: false,
+              message: `Mobile number ${rawInput} is registered under the ${matchedDbUser.role.toUpperCase()} role. Please switch to the ${matchedDbUser.role.toUpperCase()} Login tab.`
+            };
+          }
+        }
+      } catch (err) {
+        console.warn('Supabase users verification query note:', err);
+      }
+    }
+
+    // In-memory registered users fallback
+    if (!foundUser) {
+      foundUser = registeredUsers.find(u => {
+        if (u.role !== targetRole) return false;
+        const uPhone = normalizePhone(u.phone);
+        return (cleanPhone && uPhone === cleanPhone) || 
+               u.phone.trim() === rawInput || 
+               (u.email && u.email.toLowerCase() === cleanInput);
+      });
+    }
 
     if (!foundUser) {
       // Check if this mobile number belongs to another role
@@ -935,7 +1237,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
     }
 
-    // Password validation
+    // Password validation for local fallback user
     const expectedPassword = foundUser.password || 'password123';
     const isPasswordValid = 
       enteredPassword === expectedPassword || 
@@ -966,10 +1268,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return { success: true };
   };
 
-  const register = (
+  const register = async (
     targetRole: UserRole, 
     data: { fullName: string; phone: string; email: string; companyName?: string; gstNumber?: string; address: string; password?: string }
-  ): { success: boolean; message?: string } => {
+  ): Promise<{ success: boolean; message?: string }> => {
     // Role Safety Protections: Super Admin can NEVER be registered through public forms
     if (targetRole === 'admin') {
       return { 
@@ -1005,6 +1307,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setRegisteredUsers(prev => [...prev, newUser]);
 
+    // 1. User Registration Sync directly into Supabase `users` table
+    if (supabase) {
+      try {
+        const { error: userInsertError } = await supabase.from('users').insert([newUser]);
+        if (userInsertError) {
+          // Schema fallback for snake_case column names
+          await supabase.from('users').insert([{
+            id: newUser.id,
+            role: newUser.role,
+            full_name: newUser.fullName,
+            company_name: newUser.companyName,
+            phone: newUser.phone,
+            email: newUser.email,
+            gst_number: newUser.gstNumber,
+            address: newUser.address,
+            rating: newUser.rating,
+            is_verified: newUser.isVerified,
+            password: newUser.password,
+            status: newUser.status,
+            created_at: newUser.createdAt
+          }]);
+        }
+      } catch (err) {
+        console.warn('Supabase user insert exception:', err);
+      }
+    }
+
     // If registering as a driver, add to driver list with password & passcode
     if (targetRole === 'driver') {
       const newDriverRecord: DriverRecord = {
@@ -1023,6 +1352,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         password: data.password || 'password123'
       };
       setDriversList(prev => [newDriverRecord, ...prev]);
+      syncDriverToSupabase(newDriverRecord).catch(err => console.warn('Supabase driver sync warning:', err));
     }
 
     // Automatically log in and immediately navigate to role workspace
@@ -1628,8 +1958,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
     setRawBookings(prev => [newOrder, ...prev]);
 
-    // Cloud Database Persistence
-    syncBookingToSupabase(newOrder).catch(err => console.warn('Supabase booking sync warning:', err));
+    // 4. Save new orders directly into Supabase bookings table
+    if (supabase) {
+      (async () => {
+        try {
+          const { error } = await supabase.from('bookings').insert([newOrder]);
+          if (error) {
+            // Schema fallback for mapped snake_case columns
+            await syncBookingToSupabase(newOrder);
+          }
+        } catch (err) {
+          console.warn('Supabase booking direct insert error:', err);
+          syncBookingToSupabase(newOrder).catch(e => console.warn(e));
+        }
+      })();
+    }
 
     // Send notifications to Transporter & Admin
     addNotification({
@@ -1783,10 +2126,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       type: 'trip'
     });
 
-    syncFreightRequirementToSupabase(newReq).catch(err => console.warn('Supabase freight requirement insert warning:', err));
+    // 3. Save customer posts into supabase.from('customer_requirements').insert([newReq])
+    if (supabase) {
+      (async () => {
+        try {
+          const { error } = await supabase.from('customer_requirements').insert([newReq]);
+          if (error) {
+            // Fallback sync to freight_requirements schema table
+            await syncFreightRequirementToSupabase(newReq);
+          }
+        } catch (err) {
+          console.warn('Supabase customer_requirements insert error:', err);
+          syncFreightRequirementToSupabase(newReq).catch(e => console.warn(e));
+        }
+      })();
+    }
 
     return newReq;
   };
+
+  const createFreightRequirement = addFreightRequirement;
 
   const updateFreightRequirementStatus = (id: string, status: 'open' | 'fulfilled' | 'closed') => {
     setRawFreightRequirements(prev => prev.map(r => {
@@ -1976,6 +2335,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setRawJobVacancies(prev => [newVacancy, ...prev]);
     showToast('Driver hiring vacancy published successfully! / ભરતી જાહેરાત સફળતાપૂર્વક મૂકાઈ ગઈ છે.');
+
+    // 2. Insert job vacancies into supabase.from('driver_vacancies').insert([job])
+    if (supabase) {
+      (async () => {
+        try {
+          const { error } = await supabase.from('driver_vacancies').insert([newVacancy]);
+          if (error) {
+            // Schema fallback for snake_case column names
+            await supabase.from('driver_vacancies').insert([{
+              id: newVacancy.id,
+              transporter_id: newVacancy.transporterId,
+              transporter_name: newVacancy.transporterName,
+              transporter_phone: newVacancy.transporterPhone,
+              vehicle_type: newVacancy.vehicleType,
+              route: newVacancy.route,
+              salary_offer: newVacancy.salaryOffer,
+              experience_required: newVacancy.experienceRequired,
+              requirements: newVacancy.requirements,
+              status: newVacancy.status,
+              created_at: newVacancy.createdAt
+            }]);
+          }
+        } catch (err) {
+          console.warn('Supabase driver_vacancies insert exception:', err);
+        }
+      })();
+    }
+
     return { success: true };
   };
 
@@ -1989,14 +2376,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     showToast('Driver vacancy removed.');
   };
 
-  const applyForJob = (jobId: string, applicationData: {
+  const applyForJob = async (jobId: string, applicationData: {
     driverName: string;
     driverPhone: string;
     experienceYears: number;
     licenseNumber: string;
     resumeFileName: string;
     resumeUrl?: string;
-  }): { success: boolean; message?: string } => {
+  }): Promise<{ success: boolean; message?: string }> => {
     if (!applicationData.driverName || !applicationData.driverPhone || !applicationData.licenseNumber) {
       showToast('Please fill driver name, mobile number, and license number.');
       return { success: false, message: 'Please complete all required fields.' };
@@ -2026,6 +2413,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     setRawJobApplications(prev => [newApp, ...prev]);
+
+    // 2. Save the driver's application and resume metadata into supabase.from('driver_applications').insert([application])
+    if (supabase) {
+      (async () => {
+        try {
+          const { error } = await supabase.from('driver_applications').insert([newApp]);
+          if (error) {
+            // Schema fallback for snake_case column names
+            await supabase.from('driver_applications').insert([{
+              id: newApp.id,
+              job_id: newApp.jobId,
+              driver_id: newApp.driverId,
+              driver_name: newApp.driverName,
+              driver_phone: newApp.driverPhone,
+              experience_years: newApp.experienceYears,
+              license_number: newApp.licenseNumber,
+              resume_file_name: newApp.resumeFileName,
+              resume_url: newApp.resumeUrl,
+              status: newApp.status,
+              applied_at: newApp.appliedAt
+            }]);
+          }
+        } catch (err) {
+          console.warn('Supabase driver_applications insert exception:', err);
+        }
+      })();
+    }
 
     // Send notification to Transporter
     const targetJob = rawJobVacancies.find(j => j.id === jobId);
@@ -2130,6 +2544,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       freightRequirements,
       allFreightRequirements: rawFreightRequirements,
       addFreightRequirement,
+      createFreightRequirement,
       updateFreightRequirementStatus,
       toastMessage,
       showToast
