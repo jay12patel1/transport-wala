@@ -170,9 +170,16 @@ interface AppContextType {
   // Customer Freight Requirements (Bulk Loads)
   freightRequirements: CustomerFreightRequirement[];
   allFreightRequirements: CustomerFreightRequirement[];
-  addFreightRequirement: (req: Omit<CustomerFreightRequirement, 'id' | 'createdAt' | 'status'>) => Promise<CustomerFreightRequirement> | CustomerFreightRequirement;
-  createFreightRequirement: (req: Omit<CustomerFreightRequirement, 'id' | 'createdAt' | 'status'>) => Promise<CustomerFreightRequirement> | CustomerFreightRequirement;
+  customerRequirements: CustomerFreightRequirement[];
+  setCustomerRequirements: React.Dispatch<React.SetStateAction<CustomerFreightRequirement[]>>;
+  addCustomerRequirement: (req: Omit<CustomerFreightRequirement, 'id' | 'createdAt' | 'status'> | CustomerFreightRequirement) => Promise<CustomerFreightRequirement> | CustomerFreightRequirement;
+  addFreightRequirement: (req: Omit<CustomerFreightRequirement, 'id' | 'createdAt' | 'status'> | CustomerFreightRequirement) => Promise<CustomerFreightRequirement> | CustomerFreightRequirement;
+  createFreightRequirement: (req: Omit<CustomerFreightRequirement, 'id' | 'createdAt' | 'status'> | CustomerFreightRequirement) => Promise<CustomerFreightRequirement> | CustomerFreightRequirement;
   updateFreightRequirementStatus: (id: string, status: 'open' | 'fulfilled' | 'closed') => void;
+
+  setBookings: React.Dispatch<React.SetStateAction<BookingOrder[]>>;
+  driverApplications: JobApplication[];
+  setDriverApplications: React.Dispatch<React.SetStateAction<JobApplication[]>>;
 
   // Toast message
   toastMessage: string | null;
@@ -2016,29 +2023,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           created_at: newOrder.createdAt
         };
 
-        const { data, error } = await supabase.from('bookings').insert([bookingDbRow]).select();
+        const { error } = await supabase.from('bookings').insert([bookingDbRow]);
         if (!error) {
           setRawBookings(prev => [newOrder, ...prev]);
-          showToast("Booking submitted successfully!");
+          showToast("Booking created successfully!");
         } else {
           console.error("Supabase booking insert error:", error);
-          const direct = await supabase.from('bookings').insert([newOrder]).select();
+          const direct = await supabase.from('bookings').insert([newOrder]);
           if (!direct.error) {
             setRawBookings(prev => [newOrder, ...prev]);
-            showToast("Booking submitted successfully!");
+            showToast("Booking created successfully!");
           } else {
             setRawBookings(prev => [newOrder, ...prev]);
-            showToast(`Booking submitted: ${error.message}`);
+            showToast(`Booking created: ${error.message}`);
           }
         }
       } catch (err: any) {
         console.error("Insert booking failed:", err);
         setRawBookings(prev => [newOrder, ...prev]);
-        showToast("Booking submitted successfully!");
+        showToast("Booking created successfully!");
       }
     } else {
       setRawBookings(prev => [newOrder, ...prev]);
-      showToast("Booking submitted successfully!");
+      showToast("Booking created successfully!");
     }
 
     // Send notifications to Transporter & Admin
@@ -2191,53 +2198,56 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // Customer Freight Requirements (Bulk Load Enquiries)
-  const createFreightRequirement = async (reqData: Omit<CustomerFreightRequirement, 'id' | 'createdAt' | 'status'>): Promise<CustomerFreightRequirement> => {
-    const newReq: CustomerFreightRequirement = {
+  const createFreightRequirement = async (
+    reqData: Omit<CustomerFreightRequirement, 'id' | 'createdAt' | 'status'> | CustomerFreightRequirement
+  ): Promise<CustomerFreightRequirement> => {
+    const newRequirement: CustomerFreightRequirement = {
       ...reqData,
-      id: `REQ-${Date.now().toString().slice(-6)}`,
-      status: 'open',
-      createdAt: new Date().toISOString()
+      id: ('id' in reqData && reqData.id) ? reqData.id : `REQ-${Date.now().toString().slice(-6)}`,
+      status: ('status' in reqData && (reqData as any).status) ? (reqData as any).status : 'open',
+      createdAt: ('createdAt' in reqData && reqData.createdAt) ? reqData.createdAt : new Date().toISOString()
     };
 
     if (supabase) {
       try {
         // Ensure customer user exists in users table for foreign key constraint
         await supabase.from('users').upsert([{
-          id: newReq.customerId || user.id || 'usr_cust_001',
-          fullName: newReq.customerName || user.fullName || 'Shipper',
-          phone: newReq.customerPhone || user.phone || '9876543210',
+          id: newRequirement.customerId || user.id || 'usr_cust_001',
+          fullName: newRequirement.customerName || user.fullName || 'Shipper',
+          phone: newRequirement.customerPhone || user.phone || '9876543210',
           role: 'customer'
         }], { onConflict: 'id' });
 
-        const { data, error } = await supabase.from('customer_requirements').insert([newReq]).select();
+        const { error } = await supabase.from('customer_requirements').insert([newRequirement]);
         if (!error) {
-          setRawFreightRequirements(prev => [newReq, ...prev]);
-          showToast("Freight requirement posted to cloud marketplace!");
+          setRawFreightRequirements(prev => [newRequirement, ...prev]);
+          showToast("Requirement posted successfully!");
         } else {
-          console.error("Supabase customer requirement error:", error);
-          setRawFreightRequirements(prev => [newReq, ...prev]);
-          showToast(`Requirement broadcasted: ${error.message}`);
+          console.error("Supabase requirement insert error:", error);
+          showToast(`Error: ${error.message}`);
+          setRawFreightRequirements(prev => [newRequirement, ...prev]);
         }
       } catch (err: any) {
-        console.error("Insert customer_requirements failed:", err);
-        setRawFreightRequirements(prev => [newReq, ...prev]);
-        showToast("Freight requirement posted to marketplace!");
+        console.error("Supabase requirement insert error:", err);
+        showToast(`Error: ${err.message || 'Failed to post requirement'}`);
+        setRawFreightRequirements(prev => [newRequirement, ...prev]);
       }
     } else {
-      setRawFreightRequirements(prev => [newReq, ...prev]);
-      showToast("Freight requirement posted to cloud marketplace!");
+      setRawFreightRequirements(prev => [newRequirement, ...prev]);
+      showToast("Requirement posted successfully!");
     }
 
     addNotification({
       userId: 'usr_adm_001',
-      title: `New Freight Inquiry: ${newReq.id}`,
-      body: `${newReq.customerName} needs ${newReq.quantityRequired}x ${newReq.vehicleType} for ${newReq.pickupLocation} → ${newReq.deliveryLocation}`,
+      title: `New Freight Inquiry: ${newRequirement.id}`,
+      body: `${newRequirement.customerName} needs ${newRequirement.quantityRequired}x ${newRequirement.vehicleType} for ${newRequirement.pickupLocation} → ${newRequirement.deliveryLocation}`,
       type: 'trip'
     });
 
-    return newReq;
+    return newRequirement;
   };
 
+  const addCustomerRequirement = createFreightRequirement;
   const addFreightRequirement = createFreightRequirement;
 
   const updateFreightRequirementStatus = (id: string, status: 'open' | 'fulfilled' | 'closed') => {
@@ -2516,12 +2526,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           role: 'driver'
         }], { onConflict: 'id' });
 
-        const { data, error } = await supabase.from('driver_applications').insert([newApp]).select();
-        if (error) {
+        const { error } = await supabase.from('driver_applications').insert([newApp]);
+        if (!error) {
+          showToast("Application submitted successfully!");
+        } else {
           console.error("Supabase driver application insert error:", error);
           showToast(`Application saved: ${error.message}`);
-        } else {
-          showToast('Driver application & resume submitted to Supabase successfully!');
         }
       } catch (err: any) {
         console.error("Supabase driver_applications insert exception:", err);
@@ -2600,6 +2610,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       assignDriver,
       bookings,
       allBookings: rawBookings,
+      setBookings: setRawBookings,
       selectedOrder,
       setSelectedOrder,
       createBooking,
@@ -2626,6 +2637,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       updateComplaintStatus,
       jobVacancies,
       jobApplications,
+      driverApplications: rawJobApplications,
+      setDriverApplications: setRawJobApplications,
       postJobVacancy,
       updateJobVacancyStatus,
       deleteJobVacancy,
@@ -2633,6 +2646,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       updateApplicationStatus,
       freightRequirements,
       allFreightRequirements: rawFreightRequirements,
+      customerRequirements: rawFreightRequirements,
+      setCustomerRequirements: setRawFreightRequirements,
+      addCustomerRequirement,
       addFreightRequirement,
       createFreightRequirement,
       updateFreightRequirementStatus,
