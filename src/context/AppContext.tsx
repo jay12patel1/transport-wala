@@ -96,8 +96,8 @@ interface AppContextType {
   allMarketplaceVehicles: Vehicle[]; // Public available & verified catalog for booking search
   selectedVehicle: Vehicle | null;
   setSelectedVehicle: (v: Vehicle | null) => void;
-  addVehicle: (vehicleData: Partial<Vehicle>) => void;
-  updateVehicleStatus: (vehicleId: string, status: VehicleStatus) => void;
+  addVehicle: (vehicleData: Partial<Vehicle>) => void | Promise<void>;
+  updateVehicleStatus: (vehicleId: string, status: VehicleStatus) => void | Promise<void>;
   uploadDocument: (vehicleId: string, doc: Partial<VehicleDocument>) => void;
   verifyDocument: (vehicleId: string, docId: string, status: DocStatus, reason?: string) => void;
 
@@ -236,6 +236,35 @@ interface AdminSecurityState {
   password?: string;
   lastPasswordChange: string;
   resetToken?: { otp: string; expiresAt: number };
+}
+
+export function formatVehicleRow(row: any): Vehicle {
+  return {
+    id: String(row.id || `veh_${Date.now()}`),
+    ownerId: String(row.ownerId || row.owner_id || ''),
+    transporterName: String(row.transporterName || row.transporter_name || 'Fleet Operator'),
+    transporterPhone: String(row.transporterPhone || row.transporter_phone || ''),
+    transporterRating: Number(row.transporterRating ?? row.transporter_rating ?? 5.0),
+    vehicleNumber: String(row.vehicleNumber || row.vehicle_number || 'GJ-01-TW-0000'),
+    vehicleType: String(row.vehicleType || row.vehicle_type || 'Commercial Truck'),
+    vehicleCategory: (row.vehicleCategory || row.vehicle_category || 'Container') as Vehicle['vehicleCategory'],
+    vehicleSize: String(row.vehicleSize || row.vehicle_size || 'Standard Commercial Size'),
+    capacityKg: Number(row.capacityKg ?? row.capacity_kg ?? 10000),
+    capacityTon: Number(row.capacityTon ?? row.capacity_ton ?? 10),
+    currentLocation: String(row.currentLocation || row.current_location || 'Gujarat'),
+    preferredRoute: String(row.preferredRoute || row.preferred_route || 'Gujarat & Western Freight'),
+    availableFromDate: String(row.availableFromDate || row.available_from_date || new Date().toISOString().split('T')[0]),
+    isRefrigerated: Boolean(row.isRefrigerated ?? row.is_refrigerated),
+    status: (row.status as VehicleStatus) || 'available',
+    baseFare: Number(row.baseFare ?? row.base_fare ?? 20000),
+    perKmRate: Number(row.perKmRate ?? row.per_km_rate ?? 45),
+    driverName: String(row.driverName || row.driver_name || ''),
+    driverPhone: String(row.driverPhone || row.driver_phone || ''),
+    imageUrl: String(row.imageUrl || row.image_url || ''),
+    description: String(row.description || ''),
+    isVerified: row.isVerified !== undefined ? Boolean(row.isVerified) : (row.is_verified !== undefined ? Boolean(row.is_verified) : true),
+    documents: Array.isArray(row.documents) ? row.documents : []
+  };
 }
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -444,7 +473,67 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [rawFreightRequirements]);
 
-  // CLOUD DATABASE PERSISTENCE: CROSS-DEVICE DATA SYNC (SUPABASE)
+  // 1. Fetch Vehicles on Mount & 4. Real-time Subscription (Supabase)
+  useEffect(() => {
+    if (!supabase) return;
+
+    let isMounted = true;
+
+    // Fetch vehicles using supabase.from('vehicles').select('*')
+    const fetchVehicles = async () => {
+      try {
+        const { data, error } = await supabase.from('vehicles').select('*');
+        if (!error && data && isMounted) {
+          const loadedVehicles = data.map((row: any) => formatVehicleRow(row));
+          setRawVehicles(loadedVehicles);
+        } else if (error) {
+          console.warn('Vehicles fetch warning:', error.message);
+        }
+      } catch (err) {
+        console.warn('Error fetching vehicles from Supabase:', err);
+      }
+    };
+
+    fetchVehicles();
+
+    // Enable Supabase channel subscription on vehicles table to listen for INSERT and UPDATE events
+    const vehicleChannel = supabase
+      .channel('vehicles_realtime_channel')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'vehicles' },
+        (payload) => {
+          if (!isMounted || !payload.new) return;
+          const newVehicle = formatVehicleRow(payload.new);
+          setRawVehicles(prev => {
+            const exists = prev.some(v => v.id === newVehicle.id);
+            if (exists) {
+              return prev.map(v => (v.id === newVehicle.id ? { ...v, ...newVehicle } : v));
+            }
+            return [newVehicle, ...prev];
+          });
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'vehicles' },
+        (payload) => {
+          if (!isMounted || !payload.new) return;
+          const updatedVehicle = formatVehicleRow(payload.new);
+          setRawVehicles(prev =>
+            prev.map(v => (v.id === updatedVehicle.id ? { ...v, ...updatedVehicle } : v))
+          );
+        }
+      )
+      .subscribe();
+
+    return () => {
+      isMounted = false;
+      supabase.removeChannel(vehicleChannel);
+    };
+  }, []);
+
+  // Sync for Bookings, Drivers, and Freight Requirements
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase) return;
 
@@ -452,23 +541,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     async function loadCloudData() {
       try {
-        const [cloudVehicles, cloudBookings, cloudDrivers, cloudReqs] = await Promise.all([
-          fetchVehiclesFromSupabase(),
+        const [cloudBookings, cloudDrivers, cloudReqs] = await Promise.all([
           fetchBookingsFromSupabase(),
           fetchDriversFromSupabase(),
           fetchFreightRequirementsFromSupabase()
         ]);
 
         if (isMounted) {
-          if (cloudVehicles && cloudVehicles.length > 0) {
-            setRawVehicles(prev => {
-              const map = new Map<string, Vehicle>();
-              prev.forEach(v => map.set(v.id, v));
-              cloudVehicles.forEach(v => map.set(v.id, v));
-              return Array.from(map.values()).filter(v => !v.id.startsWith('tw-ondemand-'));
-            });
-          }
-
           if (cloudBookings && cloudBookings.length > 0) {
             setRawBookings(prev => {
               const map = new Map<string, BookingOrder>();
@@ -503,14 +582,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     loadCloudData();
 
-    // Supabase Real-Time Subscriptions for instant cross-device updates
-    const channel = supabase.channel('marketplace_cloud_sync')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'vehicles' }, async () => {
-        const fresh = await fetchVehiclesFromSupabase();
-        if (fresh && isMounted) {
-          setRawVehicles(fresh.filter(v => !v.id.startsWith('tw-ondemand-')));
-        }
-      })
+    // Supabase Real-Time Subscriptions for Bookings, Drivers, and Freight Requirements
+    const channel = supabase.channel('marketplace_other_sync')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'bookings' }, async () => {
         const fresh = await fetchBookingsFromSupabase();
         if (fresh && isMounted) setRawBookings(fresh);
@@ -1296,8 +1369,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return rawJobApplications;
   }, [rawJobApplications, rawJobVacancies, role, user]);
 
-  // Add Vehicle
-  const addVehicle = (vehicleData: Partial<Vehicle>) => {
+  // 2. Save Added Vehicles to Supabase
+  const addVehicle = async (vehicleData: Partial<Vehicle>) => {
     if (role !== 'transporter' && role !== 'admin') {
       showToast('Only Transporters can add fleet vehicles.');
       return;
@@ -1358,11 +1431,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ]
     };
 
+    // Append newVehicle to local state so the UI updates instantly
     setRawVehicles(prev => [newVehicle, ...prev]);
     showToast(`Vehicle ${newVehicle.vehicleNumber} added successfully! Documents submitted for Admin Verification.`);
     
-    // Cloud Database Persistence
-    syncVehicleToSupabase(newVehicle).catch(err => console.warn('Supabase vehicle sync warning:', err));
+    // Save added vehicle directly to Supabase vehicles table
+    if (supabase) {
+      try {
+        const { error } = await supabase.from('vehicles').insert([newVehicle]);
+        if (error) {
+          // Fallback sync using mapped snake_case row if schema defines snake_case columns
+          await syncVehicleToSupabase(newVehicle);
+        }
+      } catch (err) {
+        console.warn('Supabase vehicle insert exception:', err);
+        await syncVehicleToSupabase(newVehicle);
+      }
+    }
 
     // Add Admin Notification
     addNotification({
@@ -1373,16 +1458,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   };
 
-  const updateVehicleStatus = (vehicleId: string, status: VehicleStatus) => {
-    setRawVehicles(prev => prev.map(v => {
-      if (v.id === vehicleId) {
-        const updated = { ...v, status };
-        syncVehicleToSupabase(updated).catch(err => console.warn('Supabase vehicle status sync warning:', err));
-        return updated;
-      }
-      return v;
-    }));
+  // 3. Update Vehicle Status in Supabase
+  const updateVehicleStatus = async (vehicleId: string, status: VehicleStatus) => {
+    // Update local state immediately
+    setRawVehicles(prev => prev.map(v => (v.id === vehicleId ? { ...v, status } : v)));
     showToast(`Vehicle status updated to ${status.toUpperCase()}`);
+
+    // Update Supabase directly: await supabase.from('vehicles').update({ status }).eq('id', vehicleId)
+    if (supabase) {
+      try {
+        const { error } = await supabase.from('vehicles').update({ status }).eq('id', vehicleId);
+        if (error) {
+          console.warn('Supabase vehicle status update error:', error.message);
+        }
+      } catch (err) {
+        console.warn('Error updating vehicle status in Supabase:', err);
+      }
+    }
   };
 
   const uploadDocument = (vehicleId: string, docData: Partial<VehicleDocument>) => {
