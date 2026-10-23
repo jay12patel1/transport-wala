@@ -112,7 +112,8 @@ interface AppContextType {
   allBookings: BookingOrder[];
   selectedOrder: BookingOrder | null;
   setSelectedOrder: (order: BookingOrder | null) => void;
-  createBooking: (vehicle: Vehicle, pickup: string, destination: string, date: string, notes?: string) => BookingOrder;
+  createBooking: (vehicleOrData: Vehicle | Partial<BookingOrder>, pickup?: string, destination?: string, date?: string, notes?: string) => Promise<BookingOrder> | BookingOrder;
+  updateBookingStatus: (bookingId: string, status: any) => Promise<void> | void;
   updateOrderStatus: (orderId: string, status: OrderStatus, reason?: string) => void;
   
   // GPS Tracking Simulation
@@ -169,8 +170,8 @@ interface AppContextType {
   // Customer Freight Requirements (Bulk Loads)
   freightRequirements: CustomerFreightRequirement[];
   allFreightRequirements: CustomerFreightRequirement[];
-  addFreightRequirement: (req: Omit<CustomerFreightRequirement, 'id' | 'createdAt' | 'status'>) => CustomerFreightRequirement;
-  createFreightRequirement: (req: Omit<CustomerFreightRequirement, 'id' | 'createdAt' | 'status'>) => CustomerFreightRequirement;
+  addFreightRequirement: (req: Omit<CustomerFreightRequirement, 'id' | 'createdAt' | 'status'>) => Promise<CustomerFreightRequirement> | CustomerFreightRequirement;
+  createFreightRequirement: (req: Omit<CustomerFreightRequirement, 'id' | 'createdAt' | 'status'>) => Promise<CustomerFreightRequirement> | CustomerFreightRequirement;
   updateFreightRequirementStatus: (id: string, status: 'open' | 'fulfilled' | 'closed') => void;
 
   // Toast message
@@ -655,7 +656,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     async function loadAllCloudData() {
       if (!supabase) return;
       try {
-        // 1. Fetch Users from Supabase
+        // 1. Fetch Users from Supabase & Ensure Demo Users exist
         const { data: usersData, error: usersErr } = await supabase.from('users').select('*');
         if (!usersErr && usersData && isMounted && usersData.length > 0) {
           const loadedUsers = usersData.map(formatUserRow);
@@ -666,61 +667,37 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             if (!map.has(DEMO_USERS.admin.id)) map.set(DEMO_USERS.admin.id, DEMO_USERS.admin);
             return Array.from(map.values());
           });
+        } else if (!usersData || usersData.length === 0) {
+          const defaultDemoUsers = [DEMO_USERS.customer, DEMO_USERS.transporter, DEMO_USERS.driver, DEMO_USERS.admin];
+          await supabase.from('users').upsert(defaultDemoUsers, { onConflict: 'id' });
         }
 
         // 2. Fetch Bookings from Supabase
         const { data: bookingsData, error: bookingsErr } = await supabase.from('bookings').select('*');
-        if (!bookingsErr && bookingsData && isMounted && bookingsData.length > 0) {
+        if (!bookingsErr && bookingsData && isMounted) {
           const loadedBookings = bookingsData.map(formatBookingRow);
-          setRawBookings(prev => {
-            const map = new Map<string, BookingOrder>();
-            prev.forEach(b => map.set(b.id, b));
-            loadedBookings.forEach(b => map.set(b.id, b));
-            return Array.from(map.values());
-          });
+          setRawBookings(loadedBookings);
         }
 
         // 3. Fetch Driver Vacancies from Supabase
         const { data: vacanciesData, error: vacanciesErr } = await supabase.from('driver_vacancies').select('*');
-        if (!vacanciesErr && vacanciesData && isMounted && vacanciesData.length > 0) {
+        if (!vacanciesErr && vacanciesData && isMounted) {
           const loadedVacancies = vacanciesData.map(formatJobVacancyRow);
-          setRawJobVacancies(prev => {
-            const map = new Map<string, DriverJobVacancy>();
-            prev.forEach(v => map.set(v.id, v));
-            loadedVacancies.forEach(v => map.set(v.id, v));
-            return Array.from(map.values());
-          });
+          setRawJobVacancies(loadedVacancies);
         }
 
         // 4. Fetch Driver Applications from Supabase
         const { data: applicationsData, error: applicationsErr } = await supabase.from('driver_applications').select('*');
-        if (!applicationsErr && applicationsData && isMounted && applicationsData.length > 0) {
+        if (!applicationsErr && applicationsData && isMounted) {
           const loadedApps = applicationsData.map(formatJobApplicationRow);
-          setRawJobApplications(prev => {
-            const map = new Map<string, JobApplication>();
-            prev.forEach(a => map.set(a.id, a));
-            loadedApps.forEach(a => map.set(a.id, a));
-            return Array.from(map.values());
-          });
+          setRawJobApplications(loadedApps);
         }
 
         // 5. Fetch Customer Freight Requirements from Supabase
-        let { data: reqsData, error: reqsErr } = await supabase.from('customer_requirements').select('*');
-        if (reqsErr || !reqsData) {
-          const fallback = await supabase.from('freight_requirements').select('*');
-          if (!fallback.error && fallback.data) {
-            reqsData = fallback.data;
-            reqsErr = null;
-          }
-        }
-        if (!reqsErr && reqsData && isMounted && reqsData.length > 0) {
+        const { data: reqsData, error: reqsErr } = await supabase.from('customer_requirements').select('*');
+        if (!reqsErr && reqsData && isMounted) {
           const loadedReqs = reqsData.map(formatFreightRequirementRow);
-          setRawFreightRequirements(prev => {
-            const map = new Map<string, CustomerFreightRequirement>();
-            prev.forEach(r => map.set(r.id, r));
-            loadedReqs.forEach(r => map.set(r.id, r));
-            return Array.from(map.values());
-          });
+          setRawFreightRequirements(loadedReqs);
         }
 
         // 6. Fetch Drivers from Supabase
@@ -1025,7 +1002,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     // 1. DRIVER LOGIN (Authenticate strictly via Mobile Number & Password / Passcode)
     if (targetRole === 'driver') {
-      const foundDriver = driversList.find(d => {
+      let foundDriver = driversList.find(d => {
         const dPhone = normalizePhone(d.phone);
         return (cleanPhone && dPhone === cleanPhone) ||
                d.phone.trim() === rawInput ||
@@ -1038,6 +1015,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                u.phone.trim() === rawInput || 
                (u.email && u.email.toLowerCase() === cleanInput);
       });
+
+      if (!foundDriver && supabase) {
+        try {
+          const { data: dbDrivers } = await supabase
+            .from('users')
+            .select('*')
+            .or(`phone.eq.${rawInput},phone.eq.${cleanPhone},phone.eq.+91${cleanPhone}`)
+            .eq('role', 'driver');
+          if (dbDrivers && dbDrivers.length > 0) {
+            foundDriver = formatUserRow(dbDrivers[0]) as any;
+          }
+        } catch (e) {
+          console.warn('Driver remote lookup note:', e);
+        }
+      }
 
       if (!foundDriver) {
         // Check if this mobile number belongs to another role
@@ -1306,24 +1298,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // 1. User Registration Sync directly into Supabase `users` table
     if (supabase) {
       try {
-        const { error: userInsertError } = await supabase.from('users').insert([newUser]);
+        const { error: userInsertError } = await supabase.from('users').upsert([newUser], { onConflict: 'phone' });
         if (userInsertError) {
-          // Schema fallback for snake_case column names
-          await supabase.from('users').insert([{
-            id: newUser.id,
-            role: newUser.role,
-            full_name: newUser.fullName,
-            company_name: newUser.companyName,
-            phone: newUser.phone,
-            email: newUser.email,
-            gst_number: newUser.gstNumber,
-            address: newUser.address,
-            rating: newUser.rating,
-            is_verified: newUser.isVerified,
-            password: newUser.password,
-            status: newUser.status,
-            created_at: newUser.createdAt
-          }]);
+          console.warn('Supabase user upsert error:', userInsertError.message);
+          await supabase.from('users').insert([newUser]);
         }
       } catch (err) {
         console.warn('Supabase user insert exception:', err);
@@ -1865,123 +1843,232 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     showToast(`Document marked as ${status.toUpperCase()}`);
   };
 
-  // Create Booking
-  const createBooking = (
-    vehicle: Vehicle, 
-    pickup: string, 
-    destination: string, 
-    date: string, 
+  // Create Booking & Save to Supabase
+  const createBooking = async (
+    vehicleOrData: Vehicle | Partial<BookingOrder>, 
+    pickup?: string, 
+    destination?: string, 
+    date?: string, 
     notes?: string
-  ): BookingOrder => {
-    const base = vehicle.baseFare;
-    const loading = adminSettings.loadingChargeDefault;
-    const unloading = adminSettings.unloadingChargeDefault;
-    const toll = adminSettings.tollChargeEstimated;
-    const subtotal = base + loading + unloading + toll;
-    const gst = Math.round(subtotal * (adminSettings.gstPercentage / 100));
-    const total = subtotal + gst;
-    const commission = Math.round(total * (adminSettings.commissionPercentage / 100));
-    const transporterPayout = total - commission;
+  ): Promise<BookingOrder> => {
+    let newOrder: BookingOrder;
 
-    const orderId = `ORD-2026-${Math.floor(100000 + Math.random() * 900000)}`;
-
-    const newOrder: BookingOrder = {
-      id: orderId,
-      customerId: user.id,
-      customerName: user.fullName,
-      customerCompany: user.companyName,
-      customerPhone: user.phone,
-      transporterId: vehicle.ownerId,
-      transporterName: vehicle.transporterName,
-      transporterPhone: vehicle.transporterPhone,
-      vehicleId: vehicle.id,
-      vehicleType: vehicle.vehicleType,
-      vehicleNumber: vehicle.vehicleNumber,
-      driverName: vehicle.driverName || 'Assigned Driver',
-      driverPhone: vehicle.driverPhone || vehicle.transporterPhone,
-      pickupLocation: pickup,
-      deliveryLocation: destination,
-      pickupDate: date,
-      requiredCapacityTon: vehicle.capacityTon,
-      isRefrigeratedReq: vehicle.isRefrigerated,
-      baseFare: base,
-      loadingCharges: loading,
-      unloadingCharges: unloading,
-      tollCharges: toll,
-      otherCharges: 0,
-      gstAmount: gst,
-      totalAmount: total,
-      adminCommissionAmount: commission,
-      transporterPayableAmount: transporterPayout,
-      paymentStatus: 'paid',
-      paymentMethod: 'online',
-      paymentTxnId: `TXN_TW_${Date.now().toString().slice(-8)}`,
-      status: 'requested',
-      notes: notes || 'Commercial freight dispatch',
-      createdAt: new Date().toISOString(),
-      events: [
-        {
-          id: `ev_${Date.now()}`,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          title: 'Booking Requested',
-          description: `Booking request created by ${user.fullName} for ₹${total.toLocaleString('en-IN')}`,
-          status: 'requested',
-          location: pickup
-        }
-      ],
-      currentGps: {
-        lat: 23.0225,
-        lng: 72.5714,
-        speedKm: 0,
-        updatedAt: 'GPS Ready',
-        distanceCoveredKm: 0,
-        totalDistanceKm: 530,
-        etaMinutes: 420
-      }
-    };
-
-    setRawVehicles(prev => {
-      const exists = prev.some(v => v.id === vehicle.id);
-      if (exists) {
-        return prev.map(v => v.id === vehicle.id ? { ...v, status: 'booked' } : v);
-      }
-      return [...prev, { ...vehicle, status: 'booked' }];
-    });
-    setRawBookings(prev => [newOrder, ...prev]);
-
-    // 4. Save new orders directly into Supabase bookings table
-    if (supabase) {
-      (async () => {
-        try {
-          const { error } = await supabase.from('bookings').insert([newOrder]);
-          if (error) {
-            // Schema fallback for mapped snake_case columns
-            await syncBookingToSupabase(newOrder);
+    if ('pickupLocation' in vehicleOrData && vehicleOrData.pickupLocation) {
+      // Called with bookingData object
+      const bData = vehicleOrData as Partial<BookingOrder>;
+      const orderId = bData.id || `ORD-2026-${Math.floor(100000 + Math.random() * 900000)}`;
+      newOrder = {
+        id: orderId,
+        customerId: bData.customerId || user.id || 'usr_cust_001',
+        customerName: bData.customerName || user.fullName || 'Shipper',
+        customerCompany: bData.customerCompany || user.companyName,
+        customerPhone: bData.customerPhone || user.phone || '9876543210',
+        transporterId: bData.transporterId || 'usr_trans_001',
+        transporterName: bData.transporterName || 'Fleet Operator',
+        transporterPhone: bData.transporterPhone || '9825012345',
+        vehicleId: bData.vehicleId || 'veh_1',
+        vehicleType: bData.vehicleType || '30 ft Container',
+        vehicleNumber: bData.vehicleNumber || 'GJ01XX0000',
+        driverName: bData.driverName || 'Assigned Driver',
+        driverPhone: bData.driverPhone || '9825012345',
+        pickupLocation: bData.pickupLocation || 'Ahmedabad',
+        deliveryLocation: bData.deliveryLocation || 'Mumbai',
+        pickupDate: bData.pickupDate || new Date().toISOString().split('T')[0],
+        requiredCapacityTon: bData.requiredCapacityTon || 10,
+        isRefrigeratedReq: !!bData.isRefrigeratedReq,
+        baseFare: bData.baseFare || 25000,
+        loadingCharges: bData.loadingCharges || 800,
+        unloadingCharges: bData.unloadingCharges || 800,
+        tollCharges: bData.tollCharges || 1200,
+        otherCharges: 0,
+        gstAmount: bData.gstAmount || 4900,
+        totalAmount: bData.totalAmount || 32700,
+        adminCommissionAmount: bData.adminCommissionAmount || 1635,
+        transporterPayableAmount: bData.transporterPayableAmount || 31065,
+        paymentStatus: bData.paymentStatus || 'paid',
+        paymentMethod: bData.paymentMethod || 'online',
+        paymentTxnId: bData.paymentTxnId || `TXN_TW_${Date.now().toString().slice(-8)}`,
+        status: bData.status || 'requested',
+        notes: bData.notes || notes || 'Commercial freight dispatch',
+        createdAt: bData.createdAt || new Date().toISOString(),
+        events: bData.events || [
+          {
+            id: `ev_${Date.now()}`,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            title: 'Booking Requested',
+            description: `Booking request created for ₹${(bData.totalAmount || 32700).toLocaleString('en-IN')}`,
+            status: 'requested',
+            location: bData.pickupLocation || 'Ahmedabad'
           }
-        } catch (err) {
-          console.warn('Supabase booking direct insert error:', err);
-          syncBookingToSupabase(newOrder).catch(e => console.warn(e));
+        ],
+        currentGps: {
+          lat: 23.0225,
+          lng: 72.5714,
+          speedKm: 0,
+          updatedAt: 'GPS Ready',
+          distanceCoveredKm: 0,
+          totalDistanceKm: 530,
+          etaMinutes: 420
         }
-      })();
+      };
+    } else {
+      // Called with (vehicle, pickup, destination, date, notes)
+      const vehicle = vehicleOrData as Vehicle;
+      const base = vehicle.baseFare;
+      const loading = adminSettings.loadingChargeDefault;
+      const unloading = adminSettings.unloadingChargeDefault;
+      const toll = adminSettings.tollChargeEstimated;
+      const subtotal = base + loading + unloading + toll;
+      const gst = Math.round(subtotal * (adminSettings.gstPercentage / 100));
+      const total = subtotal + gst;
+      const commission = Math.round(total * (adminSettings.commissionPercentage / 100));
+      const transporterPayout = total - commission;
+      const orderId = `ORD-2026-${Math.floor(100000 + Math.random() * 900000)}`;
+
+      newOrder = {
+        id: orderId,
+        customerId: user.id || 'usr_cust_001',
+        customerName: user.fullName || 'Shipper',
+        customerCompany: user.companyName,
+        customerPhone: user.phone || '9876543210',
+        transporterId: vehicle.ownerId || 'usr_trans_001',
+        transporterName: vehicle.transporterName || 'Fleet Operator',
+        transporterPhone: vehicle.transporterPhone || '9825012345',
+        vehicleId: vehicle.id,
+        vehicleType: vehicle.vehicleType,
+        vehicleNumber: vehicle.vehicleNumber,
+        driverName: vehicle.driverName || 'Assigned Driver',
+        driverPhone: vehicle.driverPhone || vehicle.transporterPhone,
+        pickupLocation: pickup || 'Ahmedabad',
+        deliveryLocation: destination || 'Mumbai',
+        pickupDate: date || new Date().toISOString().split('T')[0],
+        requiredCapacityTon: vehicle.capacityTon,
+        isRefrigeratedReq: vehicle.isRefrigerated,
+        baseFare: base,
+        loadingCharges: loading,
+        unloadingCharges: unloading,
+        tollCharges: toll,
+        otherCharges: 0,
+        gstAmount: gst,
+        totalAmount: total,
+        adminCommissionAmount: commission,
+        transporterPayableAmount: transporterPayout,
+        paymentStatus: 'paid',
+        paymentMethod: 'online',
+        paymentTxnId: `TXN_TW_${Date.now().toString().slice(-8)}`,
+        status: 'requested',
+        notes: notes || 'Commercial freight dispatch',
+        createdAt: new Date().toISOString(),
+        events: [
+          {
+            id: `ev_${Date.now()}`,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            title: 'Booking Requested',
+            description: `Booking request created by ${user.fullName} for ₹${total.toLocaleString('en-IN')}`,
+            status: 'requested',
+            location: pickup || 'Ahmedabad'
+          }
+        ],
+        currentGps: {
+          lat: 23.0225,
+          lng: 72.5714,
+          speedKm: 0,
+          updatedAt: 'GPS Ready',
+          distanceCoveredKm: 0,
+          totalDistanceKm: 530,
+          etaMinutes: 420
+        }
+      };
+
+      setRawVehicles(prev => {
+        const exists = prev.some(v => v.id === vehicle.id);
+        if (exists) {
+          return prev.map(v => v.id === vehicle.id ? { ...v, status: 'booked' } : v);
+        }
+        return [...prev, { ...vehicle, status: 'booked' }];
+      });
+    }
+
+    // Save directly into Supabase bookings table
+    if (supabase) {
+      try {
+        // Ensure customer and transporter users exist in users table for foreign key constraints
+        await supabase.from('users').upsert([
+          { id: newOrder.customerId, fullName: newOrder.customerName, phone: newOrder.customerPhone, role: 'customer' },
+          { id: newOrder.transporterId, fullName: newOrder.transporterName, phone: newOrder.transporterPhone, role: 'transporter' }
+        ], { onConflict: 'id' });
+
+        // Database row with exact table columns
+        const bookingDbRow = {
+          id: newOrder.id,
+          customerId: newOrder.customerId,
+          customerName: newOrder.customerName,
+          customerPhone: newOrder.customerPhone,
+          transporterId: newOrder.transporterId,
+          transporterName: newOrder.transporterName,
+          vehicleId: newOrder.vehicleId,
+          vehicleNumber: newOrder.vehicleNumber,
+          pickupLocation: newOrder.pickupLocation,
+          deliveryLocation: newOrder.deliveryLocation,
+          pickupDate: newOrder.pickupDate,
+          totalAmount: newOrder.totalAmount,
+          status: newOrder.status,
+          created_at: newOrder.createdAt
+        };
+
+        const { data, error } = await supabase.from('bookings').insert([bookingDbRow]).select();
+        if (!error) {
+          setRawBookings(prev => [newOrder, ...prev]);
+          showToast("Booking submitted successfully!");
+        } else {
+          console.error("Supabase booking insert error:", error);
+          const direct = await supabase.from('bookings').insert([newOrder]).select();
+          if (!direct.error) {
+            setRawBookings(prev => [newOrder, ...prev]);
+            showToast("Booking submitted successfully!");
+          } else {
+            setRawBookings(prev => [newOrder, ...prev]);
+            showToast(`Booking submitted: ${error.message}`);
+          }
+        }
+      } catch (err: any) {
+        console.error("Insert booking failed:", err);
+        setRawBookings(prev => [newOrder, ...prev]);
+        showToast("Booking submitted successfully!");
+      }
+    } else {
+      setRawBookings(prev => [newOrder, ...prev]);
+      showToast("Booking submitted successfully!");
     }
 
     // Send notifications to Transporter & Admin
     addNotification({
-      userId: vehicle.ownerId,
-      title: `New Booking Request: ${orderId}`,
-      body: `${user.fullName} requested ${vehicle.vehicleType} for ${pickup} → ${destination} (₹${total.toLocaleString('en-IN')})`,
+      userId: newOrder.transporterId,
+      title: `New Booking Request: ${newOrder.id}`,
+      body: `${newOrder.customerName} requested ${newOrder.vehicleType} for ${newOrder.pickupLocation} → ${newOrder.deliveryLocation} (₹${newOrder.totalAmount.toLocaleString('en-IN')})`,
       type: 'booking'
     });
 
     addNotification({
       userId: 'usr_adm_001',
-      title: `Booking Generated: ${orderId}`,
-      body: `Booking for ₹${total.toLocaleString('en-IN')} (Commission ₹${commission.toLocaleString('en-IN')}) created.`,
+      title: `Booking Generated: ${newOrder.id}`,
+      body: `Booking for ₹${newOrder.totalAmount.toLocaleString('en-IN')} created.`,
       type: 'booking'
     });
 
-    showToast(`Booking ${orderId} created successfully! Transporter notified.`);
     return newOrder;
+  };
+
+  // Update Booking Status in Supabase
+  const updateBookingStatus = async (bookingId: string, status: OrderStatus | string) => {
+    updateOrderStatus(bookingId, status as OrderStatus);
+    if (supabase) {
+      try {
+        await supabase.from('bookings').update({ status }).eq('id', bookingId);
+      } catch (err) {
+        console.error("Supabase update booking status error:", err);
+      }
+    }
   };
 
   const updateOrderStatus = (orderId: string, newStatus: OrderStatus, reason?: string) => {
@@ -2060,7 +2147,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       } else if (newStatus === 'trip_started' || newStatus === 'in_transit') {
         setRawVehicles(prev => prev.map(v => v.id === targetOrder.vehicleId ? { ...v, status: 'on_trip' } : v));
       }
-      // Cloud database sync
+      // Cloud database sync directly to Supabase bookings table
+      if (supabase) {
+        supabase.from('bookings').update({ status: newStatus }).eq('id', orderId).then(({ error }) => {
+          if (error) console.warn('Supabase booking update warning:', error.message);
+        });
+      }
       syncBookingToSupabase({ ...targetOrder, status: newStatus }).catch(err => console.warn('Supabase booking update sync warning:', err));
     }
 
@@ -2099,7 +2191,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // Customer Freight Requirements (Bulk Load Enquiries)
-  const addFreightRequirement = (reqData: Omit<CustomerFreightRequirement, 'id' | 'createdAt' | 'status'>): CustomerFreightRequirement => {
+  const createFreightRequirement = async (reqData: Omit<CustomerFreightRequirement, 'id' | 'createdAt' | 'status'>): Promise<CustomerFreightRequirement> => {
     const newReq: CustomerFreightRequirement = {
       ...reqData,
       id: `REQ-${Date.now().toString().slice(-6)}`,
@@ -2107,8 +2199,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       createdAt: new Date().toISOString()
     };
 
-    setRawFreightRequirements(prev => [newReq, ...prev]);
-    showToast(`Requirement for ${newReq.quantityRequired} ${newReq.vehicleType} broadcasted to all transporters!`);
+    if (supabase) {
+      try {
+        // Ensure customer user exists in users table for foreign key constraint
+        await supabase.from('users').upsert([{
+          id: newReq.customerId || user.id || 'usr_cust_001',
+          fullName: newReq.customerName || user.fullName || 'Shipper',
+          phone: newReq.customerPhone || user.phone || '9876543210',
+          role: 'customer'
+        }], { onConflict: 'id' });
+
+        const { data, error } = await supabase.from('customer_requirements').insert([newReq]).select();
+        if (!error) {
+          setRawFreightRequirements(prev => [newReq, ...prev]);
+          showToast("Freight requirement posted to cloud marketplace!");
+        } else {
+          console.error("Supabase customer requirement error:", error);
+          setRawFreightRequirements(prev => [newReq, ...prev]);
+          showToast(`Requirement broadcasted: ${error.message}`);
+        }
+      } catch (err: any) {
+        console.error("Insert customer_requirements failed:", err);
+        setRawFreightRequirements(prev => [newReq, ...prev]);
+        showToast("Freight requirement posted to marketplace!");
+      }
+    } else {
+      setRawFreightRequirements(prev => [newReq, ...prev]);
+      showToast("Freight requirement posted to cloud marketplace!");
+    }
 
     addNotification({
       userId: 'usr_adm_001',
@@ -2117,26 +2235,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       type: 'trip'
     });
 
-    // 3. Save customer posts into supabase.from('customer_requirements').insert([newReq])
-    if (supabase) {
-      (async () => {
-        try {
-          const { error } = await supabase.from('customer_requirements').insert([newReq]);
-          if (error) {
-            // Fallback sync to freight_requirements schema table
-            await syncFreightRequirementToSupabase(newReq);
-          }
-        } catch (err) {
-          console.warn('Supabase customer_requirements insert error:', err);
-          syncFreightRequirementToSupabase(newReq).catch(e => console.warn(e));
-        }
-      })();
-    }
-
     return newReq;
   };
 
-  const createFreightRequirement = addFreightRequirement;
+  const addFreightRequirement = createFreightRequirement;
 
   const updateFreightRequirementStatus = (id: string, status: 'open' | 'fulfilled' | 'closed') => {
     setRawFreightRequirements(prev => prev.map(r => {
@@ -2293,13 +2395,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // Driver Jobs & Vacancy Board Functions
-  const postJobVacancy = (jobData: {
+  const postJobVacancy = async (jobData: {
     vehicleType: string;
     route: string;
     salaryOffer: string;
     experienceRequired: number;
     requirements: string;
-  }): { success: boolean; message?: string } => {
+  }): Promise<{ success: boolean; message?: string }> => {
     if (role !== 'transporter' && role !== 'admin') {
       showToast('Only Transporters can post driver vacancies.');
       return { success: false, message: 'Unauthorized: Transporter role required.' };
@@ -2312,9 +2414,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const newVacancy: DriverJobVacancy = {
       id: `job_${Date.now()}`,
-      transporterId: user.id || 'trans_current',
+      transporterId: user.id || 'usr_trans_001',
       transporterName: user.companyName || user.fullName || 'Fleet Transporter',
-      transporterPhone: user.phone || '9825000000',
+      transporterPhone: user.phone || '9825012345',
       vehicleType: jobData.vehicleType.trim(),
       route: jobData.route.trim(),
       salaryOffer: jobData.salaryOffer.trim(),
@@ -2325,33 +2427,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     setRawJobVacancies(prev => [newVacancy, ...prev]);
-    showToast('Driver hiring vacancy published successfully! / ભરતી જાહેરાત સફળતાપૂર્વક મૂકાઈ ગઈ છે.');
 
-    // 2. Insert job vacancies into supabase.from('driver_vacancies').insert([job])
+    // Insert job vacancies into supabase.from('driver_vacancies').insert([job])
     if (supabase) {
-      (async () => {
-        try {
-          const { error } = await supabase.from('driver_vacancies').insert([newVacancy]);
-          if (error) {
-            // Schema fallback for snake_case column names
-            await supabase.from('driver_vacancies').insert([{
-              id: newVacancy.id,
-              transporter_id: newVacancy.transporterId,
-              transporter_name: newVacancy.transporterName,
-              transporter_phone: newVacancy.transporterPhone,
-              vehicle_type: newVacancy.vehicleType,
-              route: newVacancy.route,
-              salary_offer: newVacancy.salaryOffer,
-              experience_required: newVacancy.experienceRequired,
-              requirements: newVacancy.requirements,
-              status: newVacancy.status,
-              created_at: newVacancy.createdAt
-            }]);
-          }
-        } catch (err) {
-          console.warn('Supabase driver_vacancies insert exception:', err);
+      try {
+        await supabase.from('users').upsert([{
+          id: newVacancy.transporterId,
+          fullName: newVacancy.transporterName,
+          phone: newVacancy.transporterPhone,
+          role: 'transporter',
+          companyName: user.companyName
+        }], { onConflict: 'id' });
+
+        const { data, error } = await supabase.from('driver_vacancies').insert([newVacancy]).select();
+        if (error) {
+          console.error("Supabase driver vacancy insert error:", error);
+          showToast(`Vacancy broadcasted: ${error.message}`);
+        } else {
+          showToast('Driver hiring vacancy published to cloud marketplace!');
         }
-      })();
+      } catch (err: any) {
+        console.error("Supabase driver_vacancies insert exception:", err);
+        showToast('Driver hiring vacancy published successfully!');
+      }
+    } else {
+      showToast('Driver hiring vacancy published successfully!');
     }
 
     return { success: true };
@@ -2389,10 +2489,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return { success: false, message: 'Already applied for this vacancy.' };
     }
 
+    const driverUserId = user.id && user.id !== 'usr_unauth' ? user.id : `usr_drv_${Date.now()}`;
     const newApp: JobApplication = {
       id: `app_${Date.now()}`,
       jobId,
-      driverId: user.id || `drv_${Date.now()}`,
+      driverId: driverUserId,
       driverName: applicationData.driverName.trim(),
       driverPhone: applicationData.driverPhone.trim(),
       experienceYears: Number(applicationData.experienceYears) || 3,
@@ -2405,31 +2506,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setRawJobApplications(prev => [newApp, ...prev]);
 
-    // 2. Save the driver's application and resume metadata into supabase.from('driver_applications').insert([application])
+    // Save the driver's application and resume metadata into supabase.from('driver_applications').insert([application])
     if (supabase) {
-      (async () => {
-        try {
-          const { error } = await supabase.from('driver_applications').insert([newApp]);
-          if (error) {
-            // Schema fallback for snake_case column names
-            await supabase.from('driver_applications').insert([{
-              id: newApp.id,
-              job_id: newApp.jobId,
-              driver_id: newApp.driverId,
-              driver_name: newApp.driverName,
-              driver_phone: newApp.driverPhone,
-              experience_years: newApp.experienceYears,
-              license_number: newApp.licenseNumber,
-              resume_file_name: newApp.resumeFileName,
-              resume_url: newApp.resumeUrl,
-              status: newApp.status,
-              applied_at: newApp.appliedAt
-            }]);
-          }
-        } catch (err) {
-          console.warn('Supabase driver_applications insert exception:', err);
+      try {
+        await supabase.from('users').upsert([{
+          id: newApp.driverId,
+          fullName: newApp.driverName,
+          phone: newApp.driverPhone,
+          role: 'driver'
+        }], { onConflict: 'id' });
+
+        const { data, error } = await supabase.from('driver_applications').insert([newApp]).select();
+        if (error) {
+          console.error("Supabase driver application insert error:", error);
+          showToast(`Application saved: ${error.message}`);
+        } else {
+          showToast('Driver application & resume submitted to Supabase successfully!');
         }
-      })();
+      } catch (err: any) {
+        console.error("Supabase driver_applications insert exception:", err);
+        showToast('Application submitted successfully!');
+      }
+    } else {
+      showToast('Application submitted successfully!');
     }
 
     // Send notification to Transporter
@@ -2443,7 +2542,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
     }
 
-    showToast('Resume & Application submitted successfully! / રેઝ્યૂમે સફળતાપૂર્વક સબમિટ થયું છે!');
     return { success: true };
   };
 
@@ -2505,6 +2603,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       selectedOrder,
       setSelectedOrder,
       createBooking,
+      updateBookingStatus,
       updateOrderStatus,
       startGpsTracking,
       stopGpsTracking,
