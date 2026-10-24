@@ -6,7 +6,7 @@ import { VehicleImage } from '../shared/VehicleImage';
 import { AddVehicleModal } from './AddVehicleModal';
 import { 
   Truck, Plus, MapPin, Scale, ShieldCheck, 
-  ShieldAlert, ThermometerSnowflake, Settings, ToggleLeft, ToggleRight, FileText 
+  ShieldAlert, ThermometerSnowflake, Settings, ToggleLeft, ToggleRight, FileText, Clock 
 } from 'lucide-react';
 
 export const MyVehicles: React.FC = () => {
@@ -77,13 +77,17 @@ export const MyVehicles: React.FC = () => {
 
                 <div className="absolute top-3 left-3 flex flex-wrap gap-1.5">
                   <StatusBadge status={vehicle.status} size="sm" />
-                  {vehicle.isVerified ? (
+                  {vehicle.isVerified && vehicle.status !== 'pending' && vehicle.status !== 'rejected' ? (
                     <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-600 text-white shadow">
-                      <ShieldCheck className="w-3 h-3" /> Verified
+                      <ShieldCheck className="w-3 h-3" /> Admin Approved
+                    </span>
+                  ) : vehicle.status === 'rejected' ? (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-600 text-white shadow">
+                      <ShieldAlert className="w-3 h-3" /> Verification Rejected
                     </span>
                   ) : (
                     <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500 text-white shadow">
-                      <ShieldAlert className="w-3 h-3" /> Docs Pending
+                      <Clock className="w-3 h-3" /> Pending Admin Review
                     </span>
                   )}
                 </div>
@@ -119,43 +123,67 @@ export const MyVehicles: React.FC = () => {
                   </p>
                 </div>
 
-                {/* Status Switcher Selector */}
+                {/* Status Switcher Selector / Admin Approval Workflow */}
                 <div className="pt-2 border-t border-slate-100">
-                  <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1.5">
-                    Live Operational Status
-                  </label>
-                  <div className="grid grid-cols-3 gap-1.5">
-                    <button
-                      onClick={() => handleStatusToggle(vehicle, 'available')}
-                      className={`py-1.5 rounded-lg font-bold text-[11px] transition ${
-                        vehicle.status === 'available'
-                          ? 'bg-emerald-600 text-white shadow'
-                          : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-                      }`}
-                    >
-                      Available
-                    </button>
-                    <button
-                      onClick={() => handleStatusToggle(vehicle, 'booked')}
-                      className={`py-1.5 rounded-lg font-bold text-[11px] transition ${
-                        vehicle.status === 'booked'
-                          ? 'bg-amber-600 text-white shadow'
-                          : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-                      }`}
-                    >
-                      Booked
-                    </button>
-                    <button
-                      onClick={() => handleStatusToggle(vehicle, 'maintenance')}
-                      className={`py-1.5 rounded-lg font-bold text-[11px] transition ${
-                        vehicle.status === 'maintenance'
-                          ? 'bg-rose-600 text-white shadow'
-                          : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-                      }`}
-                    >
-                      Repair
-                    </button>
-                  </div>
+                  {vehicle.status === 'pending' || !vehicle.isVerified || vehicle.approvalStatus === 'pending' ? (
+                    <div className="p-3 bg-amber-50 border border-amber-200 rounded-2xl text-[11px] text-amber-900 space-y-1">
+                      <div className="flex items-center gap-1.5 font-extrabold text-amber-800">
+                        <Clock className="w-3.5 h-3.5 text-amber-600" />
+                        <span>Awaiting Super Admin Approval</span>
+                      </div>
+                      <p className="text-amber-700 leading-relaxed text-[11px]">
+                        This vehicle is under compliance inspection. Once approved by Super Admin, it will go live in customer search.
+                      </p>
+                    </div>
+                  ) : vehicle.status === 'rejected' || vehicle.approvalStatus === 'rejected' ? (
+                    <div className="p-3 bg-rose-50 border border-rose-200 rounded-2xl text-[11px] text-rose-900 space-y-1">
+                      <div className="flex items-center gap-1.5 font-extrabold text-rose-800">
+                        <ShieldAlert className="w-3.5 h-3.5 text-rose-600" />
+                        <span>Approval Rejected</span>
+                      </div>
+                      <p className="text-rose-700 leading-relaxed text-[11px]">
+                        {vehicle.rejectionReason || 'Compliance documentation check failed.'}
+                      </p>
+                    </div>
+                  ) : (
+                    <div>
+                      <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1.5">
+                        Live Operational Status
+                      </label>
+                      <div className="grid grid-cols-3 gap-1.5">
+                        <button
+                          onClick={() => handleStatusToggle(vehicle, 'available')}
+                          className={`py-1.5 rounded-lg font-bold text-[11px] transition ${
+                            vehicle.status === 'available'
+                              ? 'bg-emerald-600 text-white shadow'
+                              : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                          }`}
+                        >
+                          Available
+                        </button>
+                        <button
+                          onClick={() => handleStatusToggle(vehicle, 'booked')}
+                          className={`py-1.5 rounded-lg font-bold text-[11px] transition ${
+                            vehicle.status === 'booked'
+                              ? 'bg-amber-600 text-white shadow'
+                              : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                          }`}
+                        >
+                          Booked
+                        </button>
+                        <button
+                          onClick={() => handleStatusToggle(vehicle, 'maintenance')}
+                          className={`py-1.5 rounded-lg font-bold text-[11px] transition ${
+                            vehicle.status === 'maintenance'
+                              ? 'bg-rose-600 text-white shadow'
+                              : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                          }`}
+                        >
+                          Repair
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Document management quick link */}

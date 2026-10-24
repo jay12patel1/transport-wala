@@ -6,6 +6,8 @@ import { VehicleDetailsModal } from './VehicleDetailsModal';
 import { BookingCheckoutModal } from './BookingCheckoutModal';
 import { PostFreightRequirementModal } from './PostFreightRequirementModal';
 import { VehicleImage } from '../shared/VehicleImage';
+import { CurrentLocationButton } from '../shared/CurrentLocationButton';
+import { PlacesAutocompleteInput } from '../shared/PlacesAutocompleteInput';
 import { 
   Search, MapPin, Calendar, Truck, Filter, 
   ArrowUpDown, ShieldCheck, ThermometerSnowflake, Star, 
@@ -192,39 +194,25 @@ export const CustomerHome: React.FC = () => {
         {/* Search Filter Form */}
         <div className="bg-white rounded-2xl p-4 sm:p-5 text-slate-800 shadow-2xl">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-            {/* Pickup */}
-            <div>
-              <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                Pickup City / Hub
-              </label>
-              <div className="relative">
-                <MapPin className="w-4 h-4 text-emerald-600 absolute left-3 top-3" />
-                <input
-                  type="text"
-                  value={searchQuery.pickup}
-                  onChange={(e) => setSearchQuery(prev => ({ ...prev, pickup: e.target.value }))}
-                  placeholder="e.g. Ahmedabad, Anand, Mehsana"
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl pl-9 pr-3 py-2.5 text-xs font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                />
-              </div>
-            </div>
+            {/* Pickup with Current Location & Places Autocomplete */}
+            <PlacesAutocompleteInput
+              label="Pickup City / Hub"
+              value={searchQuery.pickup}
+              isPickup={true}
+              iconColor="emerald"
+              placeholder="e.g. Ahmedabad, Sanand GIDC, Anand"
+              onChange={(address) => setSearchQuery(prev => ({ ...prev, pickup: address }))}
+            />
 
-            {/* Destination */}
-            <div>
-              <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                Delivery City / Port
-              </label>
-              <div className="relative">
-                <MapPin className="w-4 h-4 text-rose-600 absolute left-3 top-3" />
-                <input
-                  type="text"
-                  value={searchQuery.destination}
-                  onChange={(e) => setSearchQuery(prev => ({ ...prev, destination: e.target.value }))}
-                  placeholder="e.g. Mumbai, JNPT Port, Surat"
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl pl-9 pr-3 py-2.5 text-xs font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                />
-              </div>
-            </div>
+            {/* Delivery Destination with Places Autocomplete */}
+            <PlacesAutocompleteInput
+              label="Delivery City / Port"
+              value={searchQuery.destination}
+              isPickup={false}
+              iconColor="rose"
+              placeholder="e.g. Mumbai, JNPT Port, Surat, Delhi"
+              onChange={(address) => setSearchQuery(prev => ({ ...prev, destination: address }))}
+            />
 
             {/* Date */}
             <div>

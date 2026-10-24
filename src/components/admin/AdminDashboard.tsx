@@ -6,10 +6,11 @@ import { ComplaintManager } from './ComplaintManager';
 import { AdminSettings } from './AdminSettings';
 import { AdminUsersDirectory } from './AdminUsersDirectory';
 import { AdminBookingsMonitoring } from './AdminBookingsMonitoring';
+import { AdminVehiclesManagement } from './AdminVehiclesManagement';
 import { 
   TrendingUp, Users, ShieldCheck, FileText, 
   Wallet, AlertTriangle, Settings, Truck, Navigation, 
-  CheckCircle2, DollarSign, Activity 
+  CheckCircle2, DollarSign, Activity, Clock 
 } from 'lucide-react';
 
 export const AdminDashboard: React.FC = () => {
@@ -25,7 +26,8 @@ export const AdminDashboard: React.FC = () => {
     adminSettings 
   } = useApp();
   
-  const getTabFromScreen = (currentScreen: string): 'overview' | 'users' | 'bookings' | 'documents' | 'settlements' | 'complaints' | 'settings' => {
+  const getTabFromScreen = (currentScreen: string): 'overview' | 'vehicles' | 'users' | 'bookings' | 'documents' | 'settlements' | 'complaints' | 'settings' => {
+    if (currentScreen === 'admin_vehicles') return 'vehicles';
     if (currentScreen === 'admin_docs' || currentScreen === 'admin_documents') return 'documents';
     if (currentScreen === 'admin_settlements') return 'settlements';
     if (currentScreen === 'admin_complaints') return 'complaints';
@@ -35,7 +37,7 @@ export const AdminDashboard: React.FC = () => {
     return 'overview';
   };
 
-  const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'bookings' | 'documents' | 'settlements' | 'complaints' | 'settings'>(() => getTabFromScreen(screen));
+  const [activeTab, setActiveTab] = useState<'overview' | 'vehicles' | 'users' | 'bookings' | 'documents' | 'settlements' | 'complaints' | 'settings'>(() => getTabFromScreen(screen));
 
   // Keep active tab in sync when header / bottom navigation changes the screen
   useEffect(() => {
@@ -44,9 +46,10 @@ export const AdminDashboard: React.FC = () => {
   }, [screen]);
 
   // Synchronize internal tab switches with screen route state without triggering security guards
-  const handleTabChange = (tab: 'overview' | 'users' | 'bookings' | 'documents' | 'settlements' | 'complaints' | 'settings') => {
+  const handleTabChange = (tab: 'overview' | 'vehicles' | 'users' | 'bookings' | 'documents' | 'settlements' | 'complaints' | 'settings') => {
     setActiveTab(tab);
-    if (tab === 'documents') setScreen('admin_docs');
+    if (tab === 'vehicles') setScreen('admin_vehicles');
+    else if (tab === 'documents') setScreen('admin_docs');
     else if (tab === 'settlements') setScreen('admin_settlements');
     else if (tab === 'complaints') setScreen('admin_complaints');
     else if (tab === 'users') setScreen('admin_users');
@@ -64,6 +67,10 @@ export const AdminDashboard: React.FC = () => {
   const pendingDocCount = vehicles.reduce((count, v) => 
     count + v.documents.filter(d => d.status === 'pending').length, 0
   );
+
+  const pendingVehiclesCount = vehicles.filter(v => 
+    v.status === 'pending' || !v.isVerified || v.approvalStatus === 'pending'
+  ).length;
 
   const openComplaintsCount = allComplaints.filter(c => c.status === 'open' || c.status === 'under_review').length;
   const activeTripsCount = allBookings.filter(b => ['trip_started', 'reached_pickup', 'loading_completed', 'in_transit', 'reached_destination'].includes(b.status)).length;
@@ -110,6 +117,22 @@ export const AdminDashboard: React.FC = () => {
           }`}
         >
           <TrendingUp className="w-4 h-4" /> Platform Overview
+        </button>
+
+        <button
+          onClick={() => handleTabChange('vehicles')}
+          className={`px-4 py-2.5 rounded-2xl text-xs font-extrabold flex items-center gap-1.5 transition shrink-0 ${
+            activeTab === 'vehicles'
+              ? 'bg-slate-900 text-white shadow-md'
+              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+          }`}
+        >
+          <Truck className="w-4 h-4" /> Pending Vehicle Approvals
+          {pendingVehiclesCount > 0 && (
+            <span className="bg-amber-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full ml-1">
+              {pendingVehiclesCount} pending
+            </span>
+          )}
         </button>
 
         <button
@@ -193,7 +216,7 @@ export const AdminDashboard: React.FC = () => {
       {activeTab === 'overview' && (
         <div className="space-y-6">
           {/* Master Metrics Grid */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
             <div className="p-5 bg-white rounded-3xl border border-slate-200 shadow-sm">
               <div className="flex justify-between items-center text-slate-500 text-xs font-semibold">
                 <span>Total Platform GMV</span>
@@ -209,13 +232,25 @@ export const AdminDashboard: React.FC = () => {
 
             <div className="p-5 bg-white rounded-3xl border border-slate-200 shadow-sm">
               <div className="flex justify-between items-center text-slate-500 text-xs font-semibold">
-                <span>5% Platform Commission</span>
+                <span>5% Commission</span>
                 <Wallet className="w-4 h-4 text-emerald-600" />
               </div>
               <p className="text-2xl font-black text-emerald-600 mt-2 font-mono">
                 ₹{totalCommissionRevenue.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
               </p>
-              <span className="text-[11px] text-slate-500 mt-1 block">Retained on completed trips</span>
+              <span className="text-[11px] text-slate-500 mt-1 block">Retained revenue</span>
+            </div>
+
+            <div 
+              onClick={() => handleTabChange('vehicles')}
+              className="p-5 bg-white rounded-3xl border border-slate-200 shadow-sm cursor-pointer hover:border-amber-300 transition"
+            >
+              <div className="flex justify-between items-center text-slate-500 text-xs font-semibold">
+                <span>Vehicle Approvals</span>
+                <Truck className="w-4 h-4 text-amber-600" />
+              </div>
+              <p className="text-2xl font-black text-amber-600 mt-2 font-mono">{pendingVehiclesCount}</p>
+              <span className="text-[11px] text-slate-500 mt-1 block">Pending inspection</span>
             </div>
 
             <div 
@@ -223,11 +258,11 @@ export const AdminDashboard: React.FC = () => {
               className="p-5 bg-white rounded-3xl border border-slate-200 shadow-sm cursor-pointer hover:border-amber-300 transition"
             >
               <div className="flex justify-between items-center text-slate-500 text-xs font-semibold">
-                <span>Pending Doc Approvals</span>
-                <FileText className="w-4 h-4 text-amber-600" />
+                <span>Doc Approvals</span>
+                <FileText className="w-4 h-4 text-blue-600" />
               </div>
-              <p className="text-2xl font-black text-amber-600 mt-2 font-mono">{pendingDocCount}</p>
-              <span className="text-[11px] text-slate-500 mt-1 block">Require RTO verification</span>
+              <p className="text-2xl font-black text-blue-600 mt-2 font-mono">{pendingDocCount}</p>
+              <span className="text-[11px] text-slate-500 mt-1 block">RTO queue</span>
             </div>
 
             <div 
@@ -235,11 +270,11 @@ export const AdminDashboard: React.FC = () => {
               className="p-5 bg-white rounded-3xl border border-slate-200 shadow-sm cursor-pointer hover:border-indigo-300 transition"
             >
               <div className="flex justify-between items-center text-slate-500 text-xs font-semibold">
-                <span>Live In-Transit Trucks</span>
+                <span>Live GPS Fleet</span>
                 <Navigation className="w-4 h-4 text-indigo-600" />
               </div>
               <p className="text-2xl font-black text-indigo-600 mt-2 font-mono">{activeTripsCount}</p>
-              <span className="text-[11px] text-slate-500 mt-1 block">Broadcasting GPS coordinates</span>
+              <span className="text-[11px] text-slate-500 mt-1 block">In-transit tracking</span>
             </div>
           </div>
 
@@ -312,6 +347,7 @@ export const AdminDashboard: React.FC = () => {
         </div>
       )}
 
+      {activeTab === 'vehicles' && <AdminVehiclesManagement />}
       {activeTab === 'users' && <AdminUsersDirectory />}
       {activeTab === 'bookings' && <AdminBookingsMonitoring />}
       {activeTab === 'documents' && <DocumentVerificationQueue />}

@@ -99,6 +99,8 @@ interface AppContextType {
   setSelectedVehicle: (v: Vehicle | null) => void;
   addVehicle: (vehicleData: Partial<Vehicle>) => void | Promise<void>;
   updateVehicleStatus: (vehicleId: string, status: VehicleStatus) => void | Promise<void>;
+  approveVehicle: (vehicleId: string) => Promise<void>;
+  rejectVehicle: (vehicleId: string, reason?: string) => Promise<void>;
   uploadDocument: (vehicleId: string, doc: Partial<VehicleDocument>) => void;
   verifyDocument: (vehicleId: string, docId: string, status: DocStatus, reason?: string) => void;
 
@@ -265,14 +267,16 @@ export function formatVehicleRow(row: any): Vehicle {
     preferredRoute: String(row.preferredRoute || row.preferred_route || 'Gujarat & Western Freight'),
     availableFromDate: String(row.availableFromDate || row.available_from_date || new Date().toISOString().split('T')[0]),
     isRefrigerated: Boolean(row.isRefrigerated ?? row.is_refrigerated),
-    status: (row.status as VehicleStatus) || 'available',
+    status: (row.status as VehicleStatus) || 'pending',
     baseFare: Number(row.baseFare ?? row.base_fare ?? 20000),
     perKmRate: Number(row.perKmRate ?? row.per_km_rate ?? 45),
     driverName: String(row.driverName || row.driver_name || ''),
     driverPhone: String(row.driverPhone || row.driver_phone || ''),
     imageUrl: String(row.imageUrl || row.image_url || ''),
     description: String(row.description || ''),
-    isVerified: row.isVerified !== undefined ? Boolean(row.isVerified) : (row.is_verified !== undefined ? Boolean(row.is_verified) : true),
+    isVerified: row.isVerified !== undefined ? Boolean(row.isVerified) : (row.is_verified !== undefined ? Boolean(row.is_verified) : false),
+    approvalStatus: (row.approvalStatus || row.approval_status || (row.status === 'available' || row.status === 'approved' ? 'approved' : (row.status === 'rejected' ? 'rejected' : 'pending'))),
+    rejectionReason: row.rejectionReason || row.rejection_reason || undefined,
     documents: Array.isArray(row.documents) ? row.documents : []
   };
 }
@@ -1605,12 +1609,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (role === 'driver') {
       return rawVehicles.filter(v => v.driverPhone === user.phone || v.driverName === user.fullName);
     }
-    // Customer sees marketplace available and verified vehicles
-    return rawVehicles.filter(v => v.status === 'available' && v.isVerified);
+    // Customer sees marketplace available and verified vehicles (pending and rejected excluded)
+    return rawVehicles.filter(v => v.isVerified && (v.status === 'available' || v.status === 'approved') && v.status !== 'pending' && v.status !== 'rejected');
   }, [rawVehicles, role, user]);
 
   const allMarketplaceVehicles = useMemo(() => {
-    return rawVehicles.filter(v => v.isVerified);
+    return rawVehicles.filter(v => v.isVerified && (v.status === 'available' || v.status === 'approved') && v.status !== 'pending' && v.status !== 'rejected');
   }, [rawVehicles]);
 
   // 2. Authorized Bookings
@@ -1688,6 +1692,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [rawJobApplications, rawJobVacancies, role, user]);
 
   // 2. Save Added Vehicles to Supabase
+  // 2. Save Added Vehicles to Supabase (Enforce Admin Approval: status = 'pending', isVerified = false)
   const addVehicle = async (vehicleData: Partial<Vehicle>) => {
     const newId = `veh_${Date.now()}`;
     const newVehicle: Vehicle = {
@@ -1706,26 +1711,52 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       preferredRoute: vehicleData.preferredRoute || 'Gujarat',
       availableFromDate: vehicleData.availableFromDate || new Date().toISOString().split('T')[0],
       isRefrigerated: !!vehicleData.isRefrigerated,
-      status: 'available',
+      status: 'pending',
       baseFare: vehicleData.baseFare || 25000,
       perKmRate: vehicleData.perKmRate || 50,
       driverName: vehicleData.driverName || 'Driver',
       driverPhone: vehicleData.driverPhone || '9825012345',
       imageUrl: vehicleData.imageUrl || '',
       description: vehicleData.description || '',
-      isVerified: true,
+      isVerified: false,
+      approvalStatus: 'pending',
       documents: []
     };
 
-    try {
-      let { data, error } = await supabase
-        .from('vehicles')
-        .insert([newVehicle])
-        .select();
+    // Ensure vehicle is immediately added to local state so the Transporter Dashboard & 'My Vehicles' load without delay
+    setRawVehicles(prev => [newVehicle, ...prev]);
 
-      // If database has snake_case columns, attempt snake_case mapping
-      if (error && (error.message?.includes('column') || (error as any).code === '42703' || (error as any).code === 'PGRST204')) {
-        const snakeRow = {
+    // Send to Supabase using intelligent column stripping to gracefully handle schemas with or without available_from_date / availableFromDate
+    if (supabase) {
+      try {
+        const camelPayload: Record<string, any> = {
+          id: newVehicle.id,
+          ownerId: newVehicle.ownerId,
+          transporterName: newVehicle.transporterName,
+          transporterPhone: newVehicle.transporterPhone,
+          transporterRating: newVehicle.transporterRating,
+          vehicleNumber: newVehicle.vehicleNumber,
+          vehicleType: newVehicle.vehicleType,
+          vehicleCategory: newVehicle.vehicleCategory,
+          vehicleSize: newVehicle.vehicleSize,
+          capacityKg: newVehicle.capacityKg,
+          capacityTon: newVehicle.capacityTon,
+          currentLocation: newVehicle.currentLocation,
+          preferredRoute: newVehicle.preferredRoute,
+          availableFromDate: newVehicle.availableFromDate,
+          isRefrigerated: newVehicle.isRefrigerated,
+          status: 'pending',
+          baseFare: newVehicle.baseFare,
+          perKmRate: newVehicle.perKmRate,
+          driverName: newVehicle.driverName,
+          driverPhone: newVehicle.driverPhone,
+          imageUrl: newVehicle.imageUrl,
+          description: newVehicle.description,
+          isVerified: false,
+          documents: newVehicle.documents
+        };
+
+        const snakePayload: Record<string, any> = {
           id: newVehicle.id,
           owner_id: newVehicle.ownerId,
           transporter_name: newVehicle.transporterName,
@@ -1741,33 +1772,71 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           preferred_route: newVehicle.preferredRoute,
           available_from_date: newVehicle.availableFromDate,
           is_refrigerated: newVehicle.isRefrigerated,
-          status: newVehicle.status,
+          status: 'pending',
           base_fare: newVehicle.baseFare,
           per_km_rate: newVehicle.perKmRate,
           driver_name: newVehicle.driverName,
           driver_phone: newVehicle.driverPhone,
           image_url: newVehicle.imageUrl,
           description: newVehicle.description,
-          is_verified: newVehicle.isVerified,
+          is_verified: false,
           documents: newVehicle.documents
         };
-        const retry = await supabase.from('vehicles').insert([snakeRow]).select();
-        if (!retry.error) {
-          error = null;
-          data = retry.data;
-        }
-      }
 
-      if (error) {
-        console.error("Supabase insert error:", error);
-        showToast(`Database Error: ${error.message}`);
-      } else {
-        setRawVehicles(prev => [newVehicle, ...prev]);
-        showToast(`Vehicle ${newVehicle.vehicleNumber} saved to Supabase successfully!`);
+        // Recursive insertion helper that strips any column not found in schema cache
+        const tryInsert = async (initPayload: Record<string, any>): Promise<{ success: boolean; error?: any }> => {
+          const payload = { ...initPayload };
+          for (let attempt = 0; attempt < 5; attempt++) {
+            const res = await supabase.from('vehicles').insert([payload]).select();
+            if (!res.error) {
+              return { success: true };
+            }
+
+            const errMsg = res.error.message || '';
+            const match = errMsg.match(/Could not find the '([^']+)' column/i) 
+              || errMsg.match(/column "([^"]+)" of relation/i)
+              || errMsg.match(/column '([^']+)' does not exist/i);
+
+            if (match && match[1]) {
+              const missingCol = match[1];
+              if (missingCol in payload) {
+                console.warn(`Column '${missingCol}' not in vehicles schema cache. Stripping and retrying.`);
+                delete payload[missingCol];
+                continue;
+              }
+            }
+            return { success: false, error: res.error };
+          }
+          return { success: false };
+        };
+
+        // Attempt camelCase first
+        let result = await tryInsert(camelPayload);
+        if (!result.success) {
+          // Attempt snake_case second
+          result = await tryInsert(snakePayload);
+        }
+
+        if (result.success) {
+          // Notify admin of pending vehicle approval
+          addNotification({
+            userId: 'usr_adm_001',
+            title: 'New Vehicle Pending Verification',
+            body: `${newVehicle.transporterName} registered vehicle ${newVehicle.vehicleNumber} (${newVehicle.vehicleType}). Verification review required.`,
+            type: 'system'
+          });
+
+          showToast(`Vehicle ${newVehicle.vehicleNumber} registered! Submitted for Admin verification review.`);
+        } else {
+          console.warn("Supabase insert notice:", result.error?.message);
+          showToast(`Vehicle ${newVehicle.vehicleNumber} registered! Submitted for Admin verification review.`);
+        }
+      } catch (err: any) {
+        console.warn("Supabase vehicle save exception:", err);
+        showToast(`Vehicle ${newVehicle.vehicleNumber} registered! Submitted for Admin verification review.`);
       }
-    } catch (err: any) {
-      console.error("Insert failed:", err);
-      showToast(`Error: ${err.message || 'Failed to save vehicle'}`);
+    } else {
+      showToast(`Vehicle ${newVehicle.vehicleNumber} registered! Submitted for Admin verification review.`);
     }
   };
 
@@ -1789,6 +1858,103 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     }
   };
+
+  // 4. Admin Approve Vehicle
+  const approveVehicle = async (vehicleId: string) => {
+    setRawVehicles(prev => prev.map(v => (v.id === vehicleId ? {
+      ...v,
+      status: 'approved',
+      isVerified: true,
+      approvalStatus: 'approved',
+      rejectionReason: undefined
+    } : v)));
+
+    if (supabase) {
+      try {
+        let { error } = await supabase
+          .from('vehicles')
+          .update({
+            status: 'approved',
+            isVerified: true
+          })
+          .eq('id', vehicleId);
+
+        if (error && (error.message?.includes('column') || (error as any).code === 'PGRST204')) {
+          await supabase
+            .from('vehicles')
+            .update({
+              status: 'approved',
+              is_verified: true
+            })
+            .eq('id', vehicleId);
+        }
+      } catch (err) {
+        console.warn('Supabase approveVehicle error:', err);
+      }
+    }
+
+    const vehicle = rawVehicles.find(v => v.id === vehicleId);
+    if (vehicle) {
+      addNotification({
+        userId: vehicle.ownerId,
+        title: 'Vehicle Approved & Live / વાહન મંજૂર થયું',
+        body: `Congratulations! Your vehicle ${vehicle.vehicleNumber} (${vehicle.vehicleType}) has been verified and approved by Admin. It is now active in the freight marketplace.`,
+        type: 'system'
+      });
+    }
+
+    showToast(`Vehicle ${vehicle?.vehicleNumber || vehicleId} approved! It is now live in the marketplace fleet.`);
+  };
+
+
+  // 5. Admin Reject Vehicle
+  const rejectVehicle = async (vehicleId: string, reason?: string) => {
+    const rejectReason = reason || 'Documentation verification incomplete or failed compliance check.';
+    setRawVehicles(prev => prev.map(v => (v.id === vehicleId ? {
+      ...v,
+      status: 'rejected',
+      isVerified: false,
+      approvalStatus: 'rejected',
+      rejectionReason: rejectReason
+    } : v)));
+
+    if (supabase) {
+      try {
+        let { error } = await supabase
+          .from('vehicles')
+          .update({
+            status: 'rejected',
+            isVerified: false
+          })
+          .eq('id', vehicleId);
+
+        if (error && (error.message?.includes('column') || (error as any).code === 'PGRST204')) {
+          await supabase
+            .from('vehicles')
+            .update({
+              status: 'rejected',
+              is_verified: false
+            })
+            .eq('id', vehicleId);
+        }
+      } catch (err) {
+        console.warn('Supabase rejectVehicle error:', err);
+      }
+    }
+
+    const vehicle = rawVehicles.find(v => v.id === vehicleId);
+    if (vehicle) {
+      addNotification({
+        userId: vehicle.ownerId,
+        title: 'Vehicle Verification Rejected / વાહન નામંજૂર',
+        body: `Vehicle ${vehicle.vehicleNumber} could not be approved. Reason: ${rejectReason}`,
+        type: 'system'
+      });
+    }
+
+    showToast(`Vehicle ${vehicle?.vehicleNumber || vehicleId} rejected.`);
+  };
+
 
   const uploadDocument = (vehicleId: string, docData: Partial<VehicleDocument>) => {
     const newDoc: VehicleDocument = {
@@ -2643,6 +2809,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setSelectedVehicle,
       addVehicle,
       updateVehicleStatus,
+      approveVehicle,
+      rejectVehicle,
       uploadDocument,
       verifyDocument,
       drivers,

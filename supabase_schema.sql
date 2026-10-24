@@ -11,7 +11,7 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 -- 2. Create Custom ENUM Types
 CREATE TYPE user_role_enum AS ENUM ('customer', 'transporter', 'driver', 'super_admin');
-CREATE TYPE vehicle_status_enum AS ENUM ('available', 'booked', 'on_trip', 'maintenance', 'inactive');
+CREATE TYPE vehicle_status_enum AS ENUM ('available', 'booked', 'on_trip', 'maintenance', 'inactive', 'pending', 'rejected', 'approved');
 CREATE TYPE doc_type_enum AS ENUM ('RC', 'Insurance', 'Fitness', 'Permit', 'PUC', 'GST', 'Other');
 CREATE TYPE doc_status_enum AS ENUM ('pending', 'verified', 'rejected', 'expired');
 CREATE TYPE order_status_enum AS ENUM (
@@ -67,7 +67,7 @@ CREATE TABLE IF NOT EXISTS public.vehicles (
   preferred_route VARCHAR(200),
   available_from_date DATE DEFAULT CURRENT_DATE,
   is_refrigerated BOOLEAN DEFAULT FALSE,
-  status vehicle_status_enum DEFAULT 'available',
+  status vehicle_status_enum DEFAULT 'pending',
   base_fare NUMERIC(12, 2) NOT NULL,
   per_km_rate NUMERIC(8, 2) DEFAULT 50.00,
   driver_name VARCHAR(150),
@@ -454,3 +454,11 @@ CREATE POLICY "Public read admin settings"
 CREATE POLICY "Super admin update admin settings"
   ON public.admin_settings FOR UPDATE
   USING (public.get_auth_role() = 'super_admin');
+
+-- ==============================================================================
+-- SCHEMA REPAIR MIGRATION: available_from_date
+-- ==============================================================================
+ALTER TABLE public.vehicles ADD COLUMN IF NOT EXISTS available_from_date DATE DEFAULT CURRENT_DATE;
+ALTER TABLE public.vehicles ADD COLUMN IF NOT EXISTS "availableFromDate" DATE DEFAULT CURRENT_DATE;
+NOTIFY pgrst, 'reload schema';
+

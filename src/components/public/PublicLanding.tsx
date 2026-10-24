@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { VehicleImage } from '../shared/VehicleImage';
+import { CurrentLocationButton } from '../shared/CurrentLocationButton';
+import { PlacesAutocompleteInput } from '../shared/PlacesAutocompleteInput';
 import { 
   Truck, ShieldCheck, User, Building2, Navigation, 
   Search, Phone, Calendar, ArrowRight, CheckCircle2, 
@@ -133,39 +135,27 @@ export const PublicLanding: React.FC<PublicLandingProps> = ({ onOpenLogin, onOpe
           {/* Quick Search Engine */}
           <div className="bg-slate-950 rounded-3xl border border-slate-800 p-4 sm:p-6 shadow-2xl space-y-4">
             <form onSubmit={handleSearchSubmit} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-              <div>
-                <label className="text-[11px] font-bold text-slate-400 block mb-1">
-                  Pickup Location
-                </label>
-                <div className="relative">
-                  <MapPin className="w-4 h-4 text-emerald-400 absolute left-3 top-3" />
-                  <input
-                    type="text"
-                    required
-                    value={pickupCity}
-                    onChange={(e) => setPickupCity(e.target.value)}
-                    placeholder="e.g. Ahmedabad, Surat, Rajkot"
-                    className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-9 pr-3 py-2.5 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-blue-500 font-medium"
-                  />
-                </div>
-              </div>
+              <PlacesAutocompleteInput
+                label="Pickup Location"
+                value={pickupCity}
+                isPickup={true}
+                iconColor="emerald"
+                placeholder="e.g. Ahmedabad, Surat, Rajkot"
+                required
+                inputClassName="bg-slate-900 border-slate-800 text-white placeholder:text-slate-600 focus:border-blue-500"
+                onChange={(address) => setPickupCity(address)}
+              />
 
-              <div>
-                <label className="text-[11px] font-bold text-slate-400 block mb-1">
-                  Delivery Destination
-                </label>
-                <div className="relative">
-                  <MapPin className="w-4 h-4 text-rose-400 absolute left-3 top-3" />
-                  <input
-                    type="text"
-                    required
-                    value={dropCity}
-                    onChange={(e) => setDropCity(e.target.value)}
-                    placeholder="e.g. Mumbai, Delhi, JNPT"
-                    className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-9 pr-3 py-2.5 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-blue-500 font-medium"
-                  />
-                </div>
-              </div>
+              <PlacesAutocompleteInput
+                label="Delivery Destination"
+                value={dropCity}
+                isPickup={false}
+                iconColor="rose"
+                placeholder="e.g. Mumbai, Delhi, JNPT"
+                required
+                inputClassName="bg-slate-900 border-slate-800 text-white placeholder:text-slate-600 focus:border-blue-500"
+                onChange={(address) => setDropCity(address)}
+              />
 
               <div>
                 <label className="text-[11px] font-bold text-slate-400 block mb-1">

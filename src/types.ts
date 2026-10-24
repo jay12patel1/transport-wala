@@ -1,6 +1,6 @@
 export type UserRole = 'customer' | 'transporter' | 'driver' | 'admin';
 
-export type VehicleStatus = 'available' | 'booked' | 'on_trip' | 'maintenance' | 'inactive';
+export type VehicleStatus = 'available' | 'booked' | 'on_trip' | 'maintenance' | 'inactive' | 'pending' | 'rejected' | 'approved';
 
 export type DocStatus = 'pending' | 'verified' | 'rejected' | 'expired';
 
@@ -118,6 +118,8 @@ export interface Vehicle {
   imageUrl: string;
   description?: string;
   isVerified: boolean;
+  approvalStatus?: 'pending' | 'approved' | 'rejected';
+  rejectionReason?: string;
   documents: VehicleDocument[];
 }
 

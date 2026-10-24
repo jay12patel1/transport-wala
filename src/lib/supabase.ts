@@ -499,36 +499,70 @@ export async function signOutSupabase(): Promise<void> {
 export async function syncVehicleToSupabase(vehicle: Vehicle): Promise<{ success: boolean; error?: string }> {
   if (!isSupabaseConfigured || !supabase) return { success: true };
   try {
-    const row = {
+    const camelRow: Record<string, any> = {
       id: vehicle.id,
-      owner_id: vehicle.ownerId,
-      transporter_name: vehicle.transporterName,
-      transporter_phone: vehicle.transporterPhone,
-      transporter_rating: vehicle.transporterRating || 5.0,
-      vehicle_number: vehicle.vehicleNumber,
-      vehicle_type: vehicle.vehicleType,
-      vehicle_category: vehicle.vehicleCategory || '',
-      vehicle_size: vehicle.vehicleSize || '',
-      capacity_kg: vehicle.capacityKg,
-      capacity_ton: vehicle.capacityTon,
-      current_location: vehicle.currentLocation,
-      preferred_route: vehicle.preferredRoute || '',
-      available_from_date: vehicle.availableFromDate || new Date().toISOString().split('T')[0],
-      is_refrigerated: !!vehicle.isRefrigerated,
+      ownerId: vehicle.ownerId,
+      transporterName: vehicle.transporterName,
+      transporterPhone: vehicle.transporterPhone,
+      transporterRating: vehicle.transporterRating || 5.0,
+      vehicleNumber: vehicle.vehicleNumber,
+      vehicleType: vehicle.vehicleType,
+      vehicleCategory: vehicle.vehicleCategory || '',
+      vehicleSize: vehicle.vehicleSize || '',
+      capacityKg: vehicle.capacityKg,
+      capacityTon: vehicle.capacityTon,
+      currentLocation: vehicle.currentLocation,
+      preferredRoute: vehicle.preferredRoute || '',
+      isRefrigerated: !!vehicle.isRefrigerated,
       status: vehicle.status,
-      base_fare: vehicle.baseFare,
-      per_km_rate: vehicle.perKmRate,
-      driver_name: vehicle.driverName || '',
-      driver_phone: vehicle.driverPhone || '',
-      image_url: vehicle.imageUrl || '',
+      baseFare: vehicle.baseFare,
+      perKmRate: vehicle.perKmRate,
+      driverName: vehicle.driverName || '',
+      driverPhone: vehicle.driverPhone || '',
+      imageUrl: vehicle.imageUrl || '',
       description: vehicle.description || '',
-      is_verified: vehicle.isVerified ?? true,
+      isVerified: vehicle.isVerified ?? false,
       documents: vehicle.documents || []
     };
-    const { error } = await supabase.from('vehicles').upsert(row, { onConflict: 'id' });
-    if (error) {
-      console.warn('Supabase vehicle sync warning:', error.message);
-      return { success: false, error: error.message };
+    if (vehicle.availableFromDate) {
+      camelRow.availableFromDate = vehicle.availableFromDate;
+    }
+
+    const { error } = await supabase.from('vehicles').upsert(camelRow, { onConflict: 'id' });
+    if (error && (error.message?.includes('column') || (error as any).code === 'PGRST204')) {
+      const snakeRow: Record<string, any> = {
+        id: vehicle.id,
+        owner_id: vehicle.ownerId,
+        transporter_name: vehicle.transporterName,
+        transporter_phone: vehicle.transporterPhone,
+        transporter_rating: vehicle.transporterRating || 5.0,
+        vehicle_number: vehicle.vehicleNumber,
+        vehicle_type: vehicle.vehicleType,
+        vehicle_category: vehicle.vehicleCategory || '',
+        vehicle_size: vehicle.vehicleSize || '',
+        capacity_kg: vehicle.capacityKg,
+        capacity_ton: vehicle.capacityTon,
+        current_location: vehicle.currentLocation,
+        preferred_route: vehicle.preferredRoute || '',
+        is_refrigerated: !!vehicle.isRefrigerated,
+        status: vehicle.status,
+        base_fare: vehicle.baseFare,
+        per_km_rate: vehicle.perKmRate,
+        driver_name: vehicle.driverName || '',
+        driver_phone: vehicle.driverPhone || '',
+        image_url: vehicle.imageUrl || '',
+        description: vehicle.description || '',
+        is_verified: vehicle.isVerified ?? false,
+        documents: vehicle.documents || []
+      };
+      if (vehicle.availableFromDate) {
+        snakeRow.available_from_date = vehicle.availableFromDate;
+      }
+      const retry = await supabase.from('vehicles').upsert(snakeRow, { onConflict: 'id' });
+      if (retry.error) {
+        delete snakeRow.available_from_date;
+        await supabase.from('vehicles').upsert(snakeRow, { onConflict: 'id' });
+      }
     }
     return { success: true };
   } catch (err: any) {

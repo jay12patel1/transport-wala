@@ -23,9 +23,10 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({ status, className = ''
   switch (status) {
     // Vehicles
     case 'available':
+    case 'approved':
       bg = 'bg-emerald-50 text-emerald-700 border-emerald-200';
       icon = <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />;
-      label = 'Available Now';
+      label = 'Approved & Live';
       break;
     case 'booked':
       bg = 'bg-amber-50 text-amber-700 border-amber-200';

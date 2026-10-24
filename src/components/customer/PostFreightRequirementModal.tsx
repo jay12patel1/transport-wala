@@ -4,6 +4,8 @@ import {
   X, Truck, MapPin, Calendar, Scale, 
   IndianRupee, Send, Sparkles, CheckCircle2, AlertCircle 
 } from 'lucide-react';
+import { CurrentLocationButton } from '../shared/CurrentLocationButton';
+import { PlacesAutocompleteInput } from '../shared/PlacesAutocompleteInput';
 
 interface PostFreightRequirementModalProps {
   onClose: () => void;
@@ -128,41 +130,27 @@ export const PostFreightRequirementModal: React.FC<PostFreightRequirementModalPr
             </div>
           )}
 
-          {/* Route: Pickup & Delivery */}
+          {/* Route: Pickup & Delivery with Google Places Autocomplete */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-slate-700 font-bold mb-1">
-                Pickup City / Hub <span className="text-rose-500">*</span>
-              </label>
-              <div className="relative">
-                <MapPin className="w-4 h-4 text-emerald-600 absolute left-3 top-3" />
-                <input
-                  type="text"
-                  required
-                  value={pickupLocation}
-                  onChange={(e) => setPickupLocation(e.target.value)}
-                  placeholder="e.g. Ahmedabad, Anand, Morbi"
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl pl-9 pr-3 py-2.5 font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                />
-              </div>
-            </div>
+            <PlacesAutocompleteInput
+              label="Pickup City / Hub"
+              value={pickupLocation}
+              isPickup={true}
+              iconColor="emerald"
+              placeholder="e.g. Ahmedabad, Anand, Morbi"
+              required
+              onChange={(address) => setPickupLocation(address)}
+            />
 
-            <div>
-              <label className="block text-slate-700 font-bold mb-1">
-                Delivery Destination <span className="text-rose-500">*</span>
-              </label>
-              <div className="relative">
-                <MapPin className="w-4 h-4 text-rose-600 absolute left-3 top-3" />
-                <input
-                  type="text"
-                  required
-                  value={deliveryLocation}
-                  onChange={(e) => setDeliveryLocation(e.target.value)}
-                  placeholder="e.g. Mumbai, JNPT Port, Delhi NCR"
-                  className="w-full bg-slate-50 border border-slate-300 rounded-xl pl-9 pr-3 py-2.5 font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                />
-              </div>
-            </div>
+            <PlacesAutocompleteInput
+              label="Delivery Destination"
+              value={deliveryLocation}
+              isPickup={false}
+              iconColor="rose"
+              placeholder="e.g. Mumbai, JNPT Port, Delhi NCR"
+              required
+              onChange={(address) => setDeliveryLocation(address)}
+            />
           </div>
 
           {/* Date & Vehicle Type */}
